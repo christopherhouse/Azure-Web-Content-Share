@@ -40,14 +40,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Setup Azure CLI
-        uses: azure/CLI@v2
-        with:
-          azcliversion: latest
-          
-      - name: Install Bicep CLI
-        run: az bicep install
-        
       - name: Validate Bicep templates
         run: |
           echo "Validating main.bicep template..."
