@@ -114,10 +114,11 @@ jobs:
           
       - name: Output deployment results
         run: |
-          echo "Frontend URL: ${{ steps.deploy.outputs.frontendUrl }}"
-          echo "API URL: ${{ steps.deploy.outputs.apiUrl }}"
           echo "Resource Group: ${{ steps.deploy.outputs.resourceGroupName }}"
           echo "Location: ${{ steps.deploy.outputs.location }}"
+          echo "Container Apps Environment: ${{ steps.deploy.outputs.containerAppsEnvironmentName }}"
+          echo "Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
+          echo "User Assigned Managed Identity: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"
 
   deploy-prod:
     name: Deploy to Production
@@ -164,7 +165,8 @@ jobs:
           
       - name: Output deployment results
         run: |
-          echo "Frontend URL: ${{ steps.deploy.outputs.frontendUrl }}"
-          echo "API URL: ${{ steps.deploy.outputs.apiUrl }}"
           echo "Resource Group: ${{ steps.deploy.outputs.resourceGroupName }}"
           echo "Location: ${{ steps.deploy.outputs.location }}"
+          echo "Container Apps Environment: ${{ steps.deploy.outputs.containerAppsEnvironmentName }}"
+          echo "Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
+          echo "User Assigned Managed Identity: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"

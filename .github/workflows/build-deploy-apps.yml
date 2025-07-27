@@ -139,17 +139,84 @@ jobs:
 
       - name: Deploy API to Container Apps
         run: |
-          az containerapp update \
-            --name ca-awcs-api-$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv) \
-            --resource-group rg-awcs-dev \
-            --image ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          # Get deployment outputs
+          UNIQUE_TOKEN=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+          CONTAINER_ENV_NAME=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+          UAMI_ID=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+          ACR_LOGIN_SERVER=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+          APP_INSIGHTS_CONN=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.applicationInsightsConnectionString.value' -o tsv)
+          COSMOS_ENDPOINT=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.cosmosDbEndpoint.value' -o tsv)
+          STORAGE_ENDPOINT=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.storageAccountBlobEndpoint.value' -o tsv)
+          KEYVAULT_URI=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.keyVaultUri.value' -o tsv)
+          
+          # Check if container app already exists
+          if az containerapp show --name ca-awcs-api-${UNIQUE_TOKEN} --resource-group rg-awcs-dev > /dev/null 2>&1; then
+            echo "API Container App already exists, updating..."
+            az containerapp update \
+              --name ca-awcs-api-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-dev \
+              --image ${ACR_LOGIN_SERVER}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          else
+            echo "Creating API Container App..."
+            az containerapp create \
+              --name ca-awcs-api-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-dev \
+              --environment ${CONTAINER_ENV_NAME} \
+              --image ${ACR_LOGIN_SERVER}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }} \
+              --user-assigned ${UAMI_ID} \
+              --registry-identity ${UAMI_ID} \
+              --registry-server ${ACR_LOGIN_SERVER} \
+              --target-port 8080 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 10 \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --env-vars \
+                ASPNETCORE_ENVIRONMENT=Production \
+                APPLICATIONINSIGHTS_CONNECTION_STRING="${APP_INSIGHTS_CONN}" \
+                Azure__Storage__BlobEndpoint="${STORAGE_ENDPOINT}" \
+                Azure__CosmosDb__Endpoint="${COSMOS_ENDPOINT}" \
+                Azure__KeyVault__Uri="${KEYVAULT_URI}"
+          fi
 
       - name: Deploy Frontend to Container Apps
         run: |
-          az containerapp update \
-            --name ca-awcs-frontend-$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv) \
-            --resource-group rg-awcs-dev \
-            --image ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          # Get deployment outputs
+          UNIQUE_TOKEN=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+          CONTAINER_ENV_NAME=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+          UAMI_ID=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+          ACR_LOGIN_SERVER=$(az deployment group show --resource-group rg-awcs-dev --name infra-dev-latest --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+          
+          # Get API URL for frontend environment variable
+          API_URL="https://ca-awcs-api-${UNIQUE_TOKEN}.$(az containerapp env show --name ${CONTAINER_ENV_NAME} --resource-group rg-awcs-dev --query 'properties.defaultDomain' -o tsv)"
+          
+          # Check if container app already exists
+          if az containerapp show --name ca-awcs-frontend-${UNIQUE_TOKEN} --resource-group rg-awcs-dev > /dev/null 2>&1; then
+            echo "Frontend Container App already exists, updating..."
+            az containerapp update \
+              --name ca-awcs-frontend-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-dev \
+              --image ${ACR_LOGIN_SERVER}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          else
+            echo "Creating Frontend Container App..."
+            az containerapp create \
+              --name ca-awcs-frontend-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-dev \
+              --environment ${CONTAINER_ENV_NAME} \
+              --image ${ACR_LOGIN_SERVER}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }} \
+              --user-assigned ${UAMI_ID} \
+              --registry-identity ${UAMI_ID} \
+              --registry-server ${ACR_LOGIN_SERVER} \
+              --target-port 8080 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 10 \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --env-vars \
+                VITE_API_BASE_URL="${API_URL}"
+          fi
 
   deploy-prod:
     name: Deploy to Production
@@ -172,14 +239,81 @@ jobs:
 
       - name: Deploy API to Container Apps
         run: |
-          az containerapp update \
-            --name ca-awcs-api-$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv) \
-            --resource-group rg-awcs-prod \
-            --image ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          # Get deployment outputs
+          UNIQUE_TOKEN=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+          CONTAINER_ENV_NAME=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+          UAMI_ID=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+          ACR_LOGIN_SERVER=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+          APP_INSIGHTS_CONN=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.applicationInsightsConnectionString.value' -o tsv)
+          COSMOS_ENDPOINT=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.cosmosDbEndpoint.value' -o tsv)
+          STORAGE_ENDPOINT=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.storageAccountBlobEndpoint.value' -o tsv)
+          KEYVAULT_URI=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.keyVaultUri.value' -o tsv)
+          
+          # Check if container app already exists
+          if az containerapp show --name ca-awcs-api-${UNIQUE_TOKEN} --resource-group rg-awcs-prod > /dev/null 2>&1; then
+            echo "API Container App already exists, updating..."
+            az containerapp update \
+              --name ca-awcs-api-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-prod \
+              --image ${ACR_LOGIN_SERVER}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          else
+            echo "Creating API Container App..."
+            az containerapp create \
+              --name ca-awcs-api-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-prod \
+              --environment ${CONTAINER_ENV_NAME} \
+              --image ${ACR_LOGIN_SERVER}/${{ env.API_IMAGE_NAME }}:${{ needs.build.outputs.build-id }} \
+              --user-assigned ${UAMI_ID} \
+              --registry-identity ${UAMI_ID} \
+              --registry-server ${ACR_LOGIN_SERVER} \
+              --target-port 8080 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 10 \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --env-vars \
+                ASPNETCORE_ENVIRONMENT=Production \
+                APPLICATIONINSIGHTS_CONNECTION_STRING="${APP_INSIGHTS_CONN}" \
+                Azure__Storage__BlobEndpoint="${STORAGE_ENDPOINT}" \
+                Azure__CosmosDb__Endpoint="${COSMOS_ENDPOINT}" \
+                Azure__KeyVault__Uri="${KEYVAULT_URI}"
+          fi
 
       - name: Deploy Frontend to Container Apps
         run: |
-          az containerapp update \
-            --name ca-awcs-frontend-$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.uniqueResource Token.value' -o tsv) \
-            --resource-group rg-awcs-prod \
-            --image ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          # Get deployment outputs
+          UNIQUE_TOKEN=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+          CONTAINER_ENV_NAME=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+          UAMI_ID=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+          ACR_LOGIN_SERVER=$(az deployment group show --resource-group rg-awcs-prod --name infra-prod-latest --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+          
+          # Get API URL for frontend environment variable
+          API_URL="https://ca-awcs-api-${UNIQUE_TOKEN}.$(az containerapp env show --name ${CONTAINER_ENV_NAME} --resource-group rg-awcs-prod --query 'properties.defaultDomain' -o tsv)"
+          
+          # Check if container app already exists
+          if az containerapp show --name ca-awcs-frontend-${UNIQUE_TOKEN} --resource-group rg-awcs-prod > /dev/null 2>&1; then
+            echo "Frontend Container App already exists, updating..."
+            az containerapp update \
+              --name ca-awcs-frontend-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-prod \
+              --image ${ACR_LOGIN_SERVER}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }}
+          else
+            echo "Creating Frontend Container App..."
+            az containerapp create \
+              --name ca-awcs-frontend-${UNIQUE_TOKEN} \
+              --resource-group rg-awcs-prod \
+              --environment ${CONTAINER_ENV_NAME} \
+              --image ${ACR_LOGIN_SERVER}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build.outputs.build-id }} \
+              --user-assigned ${UAMI_ID} \
+              --registry-identity ${UAMI_ID} \
+              --registry-server ${ACR_LOGIN_SERVER} \
+              --target-port 8080 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 10 \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --env-vars \
+                VITE_API_BASE_URL="${API_URL}"
+          fi
