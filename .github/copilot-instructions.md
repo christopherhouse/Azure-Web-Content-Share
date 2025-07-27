@@ -14,6 +14,23 @@ This solution is a secure file sharing web application built with:
 
 ## 🚀 Development Workflow Standards
 
+### ⚠️ Implementation Standards
+
+#### Complete Implementation Requirement
+- **TODO/mock implementation is never successful** - All changes must be complete, working implementations
+- **No placeholder code** - Every feature must be fully functional upon delivery
+- **If unable to determine implementation** - Stop immediately and ask for guidance rather than providing incomplete solutions
+- **All dependencies must be properly configured** - No missing configuration or setup steps
+- **Error handling must be comprehensive** - Handle all expected and unexpected scenarios
+- **Testing must be thorough** - All code paths must be tested and verified
+
+#### When to Ask for Help
+- When requirements are unclear or ambiguous
+- When architectural decisions need clarification
+- When external API documentation is insufficient
+- When security implications are uncertain
+- When performance requirements are not specified
+
 ### 1. .NET 8 Backend Development
 
 #### API Structure & Patterns
@@ -61,19 +78,41 @@ public static class FileEndpoints
 #### Testing Requirements
 - **All code except Program.cs must have unit tests**
 - Use **xUnit testing framework**
+- Use **FluentAssertions** for more readable and expressive assertions
+- Use **AutoFixture** for test data generation and object creation
 - **Minimum 80% code coverage** for business logic
 - **Test naming convention**: `MethodName_Scenario_ExpectedResult`
-- **Use test doubles** (mocks/stubs) for external dependencies
+- **Use test doubles** (mocks/stubs) for external dependencies with Moq
 - **Example test structure**:
 ```csharp
 public class FileServiceTests
 {
-    [Fact]
-    public async Task GetFileAsync_ValidId_ReturnsFile()
+    private readonly Mock<IDependency> _mockDependency;
+    private readonly Fixture _fixture;
+    private readonly FileService _sut;
+
+    public FileServiceTests()
+    {
+        _mockDependency = new Mock<IDependency>();
+        _fixture = new Fixture();
+        _sut = new FileService(_mockDependency.Object);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetFileAsync_ValidId_ReturnsFile(string fileId)
     {
         // Arrange
+        var expectedFile = _fixture.Create<FileModel>();
+        _mockDependency.Setup(x => x.GetAsync(fileId))
+                      .ReturnsAsync(expectedFile);
+
         // Act  
+        var result = await _sut.GetFileAsync(fileId);
+
         // Assert
+        result.Should().NotBeNull();
+        result.Should().BeEquivalentTo(expectedFile);
     }
 }
 ```

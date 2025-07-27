@@ -29,6 +29,7 @@ var containerRegistryName = 'cr${appName}${uniqueResourceToken}'
 var containerAppsEnvironmentName = 'cae-${appName}-${uniqueResourceToken}'
 var apiContainerAppName = 'ca-${appName}-api-${uniqueResourceToken}'
 var frontendContainerAppName = 'ca-${appName}-frontend-${uniqueResourceToken}'
+var cleanupJobName = 'caj-${appName}-cleanup-${uniqueResourceToken}'
 
 // Deploy Log Analytics workspace first (foundation for other services)
 module logAnalytics 'modules/logAnalytics/main.bicep' = {
@@ -138,6 +139,25 @@ module containerApps 'modules/containerApps/main.bicep' = {
   }
 }
 
+// Deploy Container Apps Jobs (depends on Container Apps Environment)
+module containerAppsJobs 'modules/containerAppsJobs/main.bicep' = {
+  name: 'containerAppsJobs-deployment'
+  params: {
+    location: location
+    containerAppsEnvironmentName: containerAppsEnvironmentName
+    cleanupJobName: cleanupJobName
+    containerRegistryLoginServer: containerRegistry.outputs.loginServer
+    applicationInsightsConnectionString: appInsights.outputs.connectionString
+    cosmosDbEndpoint: cosmosDb.outputs.cosmosDbEndpoint
+    storageAccountBlobEndpoint: storageAccount.outputs.blobEndpoint
+    keyVaultUri: keyVault.outputs.keyVaultUri
+    tags: tags
+  }
+  dependsOn: [
+    containerApps
+  ]
+}
+
 // Role assignments for Container Apps to access other services
 
 // Grant Container Registry pull access to Container Apps
@@ -210,6 +230,50 @@ resource apiContainerAppKeyVaultAssignment 'Microsoft.Authorization/roleAssignme
   properties: {
     roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
     principalId: containerApps.outputs.apiContainerAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Container Registry pull access to Cleanup Job
+resource cleanupJobAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistryName, cleanupJobName, containerRegistryPullRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: containerRegistryPullRoleDefinition.id
+    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Storage Blob Data Contributor access to Cleanup Job
+resource cleanupJobStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountName, cleanupJobName, storageBlobDataContributorRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRoleDefinition.id
+    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Cosmos DB Data Contributor access to Cleanup Job
+resource cleanupJobCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(cosmosDbAccountName, cleanupJobName, cosmosDbDataContributorRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: cosmosDbDataContributorRoleDefinition.id
+    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Key Vault Secrets User access to Cleanup Job
+resource cleanupJobKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultName, cleanupJobName, keyVaultSecretsUserRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
+    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
     principalType: 'ServicePrincipal'
   }
 }

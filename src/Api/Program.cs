@@ -45,8 +45,7 @@ builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IFileShareService, FileShareService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
-// Register background services
-builder.Services.AddHostedService<ExpiredShareCleanupService>();
+// Background cleanup is now handled by a separate Container Apps job
 
 // Add CORS
 builder.Services.AddCors(options =>
