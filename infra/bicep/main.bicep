@@ -172,12 +172,33 @@ module containerAppsJobs 'modules/containerAppsJobs/main.bicep' = {
 
 // Role assignments for services to access other resources
 
-// Grant Container Registry pull access to User Assigned Managed Identity (for Container Apps)
+// Role definitions (defined once and reused)
 resource containerRegistryPullRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull role
 }
 
+resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '8311e382-0749-4cb8-b61a-304f252e45ec' // AcrPush role
+}
+
+resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
+}
+
+resource cosmosDbDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor role
+}
+
+resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User role
+}
+
+// Grant Container Registry pull access to User Assigned Managed Identity (for Container Apps)
 resource uamiAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerRegistryName, userAssignedManagedIdentityName, containerRegistryPullRoleDefinition.id)
   scope: resourceGroup()
@@ -189,17 +210,45 @@ resource uamiAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 // Grant Container Registry push access to GitHub Actions Service Principal
-resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '8311e382-0749-4cb8-b61a-304f252e45ec' // AcrPush role
-}
-
 resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerRegistryName, 'github-actions', containerRegistryPushRoleDefinition.id)
   scope: resourceGroup()
   properties: {
     roleDefinitionId: containerRegistryPushRoleDefinition.id
     principalId: githubActionsServicePrincipalObjectId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Storage Blob Data Contributor access to UAMI (for Container Apps)
+resource uamiStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountName, userAssignedManagedIdentityName, storageBlobDataContributorRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRoleDefinition.id
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Cosmos DB Data Contributor access to UAMI (for Container Apps)
+resource uamiCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(cosmosDbAccountName, userAssignedManagedIdentityName, cosmosDbDataContributorRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: cosmosDbDataContributorRoleDefinition.id
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Key Vault Secrets User access to UAMI (for Container Apps)
+resource uamiKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultName, userAssignedManagedIdentityName, keyVaultSecretsUserRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -216,11 +265,6 @@ resource cleanupJobAcrPullAssignment 'Microsoft.Authorization/roleAssignments@20
 }
 
 // Grant Storage Blob Data Contributor access to Cleanup Job
-resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
-}
-
 resource cleanupJobStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccountName, cleanupJobName, storageBlobDataContributorRoleDefinition.id)
   scope: resourceGroup()
@@ -232,11 +276,6 @@ resource cleanupJobStorageAssignment 'Microsoft.Authorization/roleAssignments@20
 }
 
 // Grant Cosmos DB Data Contributor access to Cleanup Job
-resource cosmosDbDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor role
-}
-
 resource cleanupJobCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(cosmosDbAccountName, cleanupJobName, cosmosDbDataContributorRoleDefinition.id)
   scope: resourceGroup()
@@ -248,11 +287,6 @@ resource cleanupJobCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2
 }
 
 // Grant Key Vault Secrets User access to Cleanup Job
-resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User role
-}
-
 resource cleanupJobKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVaultName, cleanupJobName, keyVaultSecretsUserRoleDefinition.id)
   scope: resourceGroup()
