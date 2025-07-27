@@ -115,7 +115,7 @@ jobs:
       - name: Run API unit tests
         run: |
           echo "🧪 Running API unit tests..."
-          cd src/Api
+          cd src/Tests
           dotnet test \
             --configuration Release \
             --no-build \
@@ -131,7 +131,7 @@ jobs:
         if: always()
         with:
           name: API Unit Tests
-          path: src/Api/TestResults/*.trx
+          path: src/Tests/TestResults/*.trx
           reporter: dotnet-trx
           fail-on-error: true
 
@@ -139,7 +139,7 @@ jobs:
         if: always()
         run: |
           echo "📊 Generating API code coverage report..."
-          cd src/Api
+          cd src/Tests
           
           # Install reportgenerator tool
           dotnet tool install -g dotnet-reportgenerator-globaltool
@@ -288,7 +288,7 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "- **API Unit Tests**: $([ -f src/Api/TestResults/*.trx ] && echo '✅ Passed' || echo '❌ Failed')" >> $GITHUB_STEP_SUMMARY
+          echo "- **API Unit Tests**: $([ -f src/Tests/TestResults/*.trx ] && echo '✅ Passed' || echo '❌ Failed')" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend Unit Tests**: $([ -f src/Frontend/TestResults/junit.xml ] && echo '✅ Passed' || echo '❌ Failed')" >> $GITHUB_STEP_SUMMARY
           echo "- **Infrastructure Validation**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
           echo "- **Security Scanning**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
