@@ -90,7 +90,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'api'
-          image: '${containerRegistryLoginServer}/api:latest'
+          image: '${containerRegistryLoginServer}/azure-web-content-share-api:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -105,15 +105,15 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: applicationInsightsConnectionString
             }
             {
-              name: 'CosmosDb__Endpoint'
-              value: cosmosDbEndpoint
-            }
-            {
-              name: 'Storage__BlobEndpoint'
+              name: 'Azure__Storage__BlobEndpoint'
               value: storageAccountBlobEndpoint
             }
             {
-              name: 'KeyVault__VaultUri'
+              name: 'Azure__CosmosDb__Endpoint'
+              value: cosmosDbEndpoint
+            }
+            {
+              name: 'Azure__KeyVault__Uri'
               value: keyVaultUri
             }
           ]
@@ -150,7 +150,7 @@ resource frontendContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       ingress: {
         external: true
-        targetPort: 80
+        targetPort: 8080
         allowInsecure: false
         traffic: [
           {
@@ -170,7 +170,7 @@ resource frontendContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'frontend'
-          image: '${containerRegistryLoginServer}/frontend:latest'
+          image: '${containerRegistryLoginServer}/azure-web-content-share-frontend:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
