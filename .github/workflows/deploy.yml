@@ -14,6 +14,11 @@ on:
         options:
           - dev
           - prod
+      pushContainers:
+        description: 'Push containers and deploy apps (false = build and test only, deploy infra only)'
+        required: false
+        default: true
+        type: boolean
       skipInfrastructure:
         description: 'Skip infrastructure deployment (deploy apps only)'
         required: false
@@ -41,6 +46,7 @@ jobs:
       environment: ${{ steps.env.outputs.environment }}
       resource-group: ${{ steps.env.outputs.resource-group }}
       deploy-infra: ${{ steps.env.outputs.deploy-infra }}
+      push-containers: ${{ steps.env.outputs.push-containers }}
     
     steps:
       - name: Determine environment and settings
@@ -58,17 +64,162 @@ jobs:
             else
               echo "deploy-infra=true" >> $GITHUB_OUTPUT
             fi
+            if [ "${{ github.event.inputs.pushContainers }}" == "true" ]; then
+              echo "push-containers=true" >> $GITHUB_OUTPUT
+            else
+              echo "push-containers=false" >> $GITHUB_OUTPUT
+            fi
           else
-            # Push to main = deploy to dev
+            # Push to main = deploy to dev with containers
             echo "environment=dev" >> $GITHUB_OUTPUT
             echo "resource-group=rg-awcs-dev" >> $GITHUB_OUTPUT
             echo "deploy-infra=true" >> $GITHUB_OUTPUT
+            echo "push-containers=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-test:
+    name: Build Code and Run Tests
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    outputs:
+      api-image-tag: ${{ steps.images.outputs.api-image-tag }}
+      frontend-image-tag: ${{ steps.images.outputs.frontend-image-tag }}
+      container-registry: ${{ steps.registry.outputs.container-registry }}
+      container-registry-name: ${{ steps.registry.outputs.container-registry-name }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and test API
+        run: |
+          echo "🔨 Building API..."
+          cd src/Api
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+          
+          echo "🧪 Testing API..."
+          dotnet test --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
+          
+      - name: Build and test Frontend
+        run: |
+          echo "🔨 Building Frontend..."
+          cd src/Frontend
+          npm ci
+          npm run type-check
+          npm run build
+
+      - name: Azure login using OIDC
+        if: needs.determine-environment.outputs.push-containers == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get container registry details
+        if: needs.determine-environment.outputs.push-containers == 'true'
+        id: registry
+        run: |
+          # Get registry details from existing deployment
+          RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+          DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-latest"
+          
+          REGISTRY_NAME=$(az deployment group show \
+            --resource-group $RG_NAME \
+            --name $DEPLOYMENT_NAME \
+            --query 'properties.outputs.containerRegistryName.value' -o tsv 2>/dev/null || echo "")
+          REGISTRY_SERVER=$(az deployment group show \
+            --resource-group $RG_NAME \
+            --name $DEPLOYMENT_NAME \
+            --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$REGISTRY_NAME" ] || [ -z "$REGISTRY_SERVER" ]; then
+            echo "❌ Could not retrieve container registry details. Registry may not exist yet."
+            echo "   This is expected for initial deployments. Infrastructure will be deployed next."
+            # For initial deployments, we'll skip container operations
+            echo "skip-containers=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "container-registry=$REGISTRY_SERVER" >> $GITHUB_OUTPUT
+          echo "container-registry-name=$REGISTRY_NAME" >> $GITHUB_OUTPUT
+          echo "skip-containers=false" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Azure Container Registry
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        run: |
+          az acr login --name ${{ steps.registry.outputs.container-registry-name }}
+
+      - name: Generate image tags
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        id: images
+        run: |
+          BUILD_ID="${{ github.run_number }}"
+          REGISTRY="${{ steps.registry.outputs.container-registry }}"
+          
+          API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
+          FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
+          
+          echo "api-image-tag=${API_TAG}" >> $GITHUB_OUTPUT
+          echo "frontend-image-tag=${FRONTEND_TAG}" >> $GITHUB_OUTPUT
+          
+          echo "🏷️ API Image: ${API_TAG}"
+          echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
+
+      - name: Build and push API image
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/Api/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.api-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend image
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/Frontend/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.frontend-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: API Tests
+          path: src/Api/TestResults/*.trx
+          reporter: dotnet-trx
+
+      - name: Build summary
+        run: |
+          echo "✅ Code build and test completed successfully"
+          if [ "${{ needs.determine-environment.outputs.push-containers }}" == "true" ]; then
+            if [ "${{ steps.registry.outputs.skip-containers }}" == "true" ]; then
+              echo "⏭️ Container push skipped - registry not found (expected for initial deployment)"
+            else
+              echo "📦 Container images built and pushed"
+              echo "   API: ${{ steps.images.outputs.api-image-tag }}"
+              echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
+            fi
+          else
+            echo "⏭️ Container push skipped by configuration"
           fi
 
   deploy-infrastructure:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    needs: determine-environment
+    needs: [determine-environment, build-and-test]
     if: needs.determine-environment.outputs.deploy-infra == 'true'
     environment: 
       name: ${{ needs.determine-environment.outputs.environment }}
@@ -125,16 +276,14 @@ jobs:
           echo "📦 Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
           echo "🔐 User Managed Identity: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"
 
-  build-and-push:
-    name: Build and Push Container Images
+  build-and-push-post-infra:
+    name: Build and Push Container Images (Post-Infrastructure)
     runs-on: ubuntu-latest
-    needs: [determine-environment, deploy-infrastructure]
-    if: always() && !cancelled() && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped')
+    needs: [determine-environment, build-and-test, deploy-infrastructure]
+    if: needs.determine-environment.outputs.push-containers == 'true' && needs.build-and-test.outputs.container-registry == ''
     outputs:
       api-image-tag: ${{ steps.images.outputs.api-image-tag }}
       frontend-image-tag: ${{ steps.images.outputs.frontend-image-tag }}
-      container-registry: ${{ steps.registry.outputs.container-registry }}
-      container-registry-name: ${{ steps.registry.outputs.container-registry-name }}
     
     steps:
       - name: Checkout repository
@@ -147,45 +296,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Get container registry details
-        id: registry
-        run: |
-          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
-            # Use outputs from infrastructure deployment
-            echo "container-registry=${{ needs.deploy-infrastructure.outputs.container-registry }}" >> $GITHUB_OUTPUT
-            echo "container-registry-name=${{ needs.deploy-infrastructure.outputs.container-registry-name }}" >> $GITHUB_OUTPUT
-          else
-            # Get from existing deployment (skip infra mode)
-            REGISTRY_NAME=$(az deployment group show \
-              --resource-group ${{ needs.determine-environment.outputs.resource-group }} \
-              --name infra-${{ needs.determine-environment.outputs.environment }}-latest \
-              --query 'properties.outputs.containerRegistryName.value' -o tsv 2>/dev/null || echo "")
-            REGISTRY_SERVER=$(az deployment group show \
-              --resource-group ${{ needs.determine-environment.outputs.resource-group }} \
-              --name infra-${{ needs.determine-environment.outputs.environment }}-latest \
-              --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv 2>/dev/null || echo "")
-            
-            if [ -z "$REGISTRY_NAME" ] || [ -z "$REGISTRY_SERVER" ]; then
-              echo "❌ Could not retrieve container registry details. Ensure infrastructure is deployed first."
-              exit 1
-            fi
-            
-            echo "container-registry=$REGISTRY_SERVER" >> $GITHUB_OUTPUT
-            echo "container-registry-name=$REGISTRY_NAME" >> $GITHUB_OUTPUT
-          fi
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Azure Container Registry
         run: |
-          az acr login --name ${{ steps.registry.outputs.container-registry-name }}
+          az acr login --name ${{ needs.deploy-infrastructure.outputs.container-registry-name }}
 
       - name: Generate image tags
         id: images
         run: |
           BUILD_ID="${{ github.run_number }}"
-          REGISTRY="${{ steps.registry.outputs.container-registry }}"
+          REGISTRY="${{ needs.deploy-infrastructure.outputs.container-registry }}"
           
           API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
           FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
@@ -195,24 +317,6 @@ jobs:
           
           echo "🏷️ API Image: ${API_TAG}"
           echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
-
-      - name: Build and test API
-        run: |
-          echo "🔨 Building API..."
-          cd src/Api
-          dotnet restore
-          dotnet build --configuration Release --no-restore
-          
-          echo "🧪 Testing API..."
-          dotnet test --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
-          
-      - name: Build and test Frontend
-        run: |
-          echo "🔨 Building Frontend..."
-          cd src/Frontend
-          npm ci
-          npm run type-check
-          npm run build
 
       - name: Build and push API image
         uses: docker/build-push-action@v5
@@ -234,19 +338,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: API Tests
-          path: src/Api/TestResults/*.trx
-          reporter: dotnet-trx
+      - name: Container push summary
+        run: |
+          echo "📦 Container images built and pushed after infrastructure deployment"
+          echo "   API: ${{ steps.images.outputs.api-image-tag }}"
+          echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
 
   deploy-applications:
     name: Deploy Applications to Container Apps
     runs-on: ubuntu-latest
-    needs: [determine-environment, deploy-infrastructure, build-and-push]
-    if: always() && !cancelled() && needs.build-and-push.result == 'success'
+    needs: [determine-environment, build-and-test, deploy-infrastructure, build-and-push-post-infra]
+    if: always() && !cancelled() && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped') && (needs.build-and-test.outputs.api-image-tag != '' || needs.build-and-push-post-infra.result == 'success')
     environment: 
       name: ${{ needs.determine-environment.outputs.environment }}
     
@@ -258,7 +360,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Get deployment configuration
+      - name: Get deployment configuration and image tags
         id: config
         run: |
           if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
@@ -285,6 +387,17 @@ jobs:
             echo "storage-endpoint=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.storageAccountBlobEndpoint.value' -o tsv)" >> $GITHUB_OUTPUT
             echo "keyvault-uri=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.keyVaultUri.value' -o tsv)" >> $GITHUB_OUTPUT
           fi
+          
+          # Determine which image tags to use
+          if [ -n "${{ needs.build-and-test.outputs.api-image-tag }}" ]; then
+            # Images were built in the initial build step
+            echo "api-image-tag=${{ needs.build-and-test.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
+            echo "frontend-image-tag=${{ needs.build-and-test.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
+          else
+            # Images were built after infrastructure deployment
+            echo "api-image-tag=${{ needs.build-and-push-post-infra.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
+            echo "frontend-image-tag=${{ needs.build-and-push-post-infra.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy API to Container Apps
         run: |
@@ -292,6 +405,7 @@ jobs:
           RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
           
           echo "🚀 Deploying API: $APP_NAME"
+          echo "📦 Using image: ${{ steps.config.outputs.api-image-tag }}"
           
           # Check if container app already exists
           if az containerapp show --name $APP_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
@@ -299,14 +413,14 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ needs.build-and-push.outputs.api-image-tag }}
+              --image ${{ steps.config.outputs.api-image-tag }}
           else
             echo "🆕 Creating new API Container App..."
             az containerapp create \
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --environment ${{ steps.config.outputs.container-env-name }} \
-              --image ${{ needs.build-and-push.outputs.api-image-tag }} \
+              --image ${{ steps.config.outputs.api-image-tag }} \
               --user-assigned ${{ steps.config.outputs.uami-id }} \
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
@@ -338,6 +452,7 @@ jobs:
           API_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
           
           echo "🚀 Deploying Frontend: $APP_NAME"
+          echo "📦 Using image: ${{ steps.config.outputs.frontend-image-tag }}"
           echo "🔗 API URL: $API_URL"
           
           # Check if container app already exists
@@ -346,14 +461,14 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ needs.build-and-push.outputs.frontend-image-tag }}
+              --image ${{ steps.config.outputs.frontend-image-tag }}
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --environment ${{ steps.config.outputs.container-env-name }} \
-              --image ${{ needs.build-and-push.outputs.frontend-image-tag }} \
+              --image ${{ steps.config.outputs.frontend-image-tag }} \
               --user-assigned ${{ steps.config.outputs.uami-id }} \
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
