@@ -82,6 +82,7 @@ fi
 # Deploy the infrastructure
 echo "🚀 Deploying infrastructure..."
 DEPLOYMENT_NAME="infra-${ENVIRONMENT}-$(date +%Y%m%d-%H%M%S)"
+LATEST_ALIAS="infra-${ENVIRONMENT}-latest"
 
 az deployment group create \
     --resource-group "$RESOURCE_GROUP_NAME" \
@@ -93,6 +94,16 @@ az deployment group create \
 if [ $? -eq 0 ]; then
     echo
     echo "✅ Deployment completed successfully!"
+    
+    # Create an alias deployment for 'latest' reference
+    echo "🔗 Creating 'latest' deployment alias..."
+    az deployment group create \
+        --resource-group "$RESOURCE_GROUP_NAME" \
+        --template-file "infra/bicep/main.bicep" \
+        --parameters "@infra/bicep/parameters/${ENVIRONMENT}.bicepparam" \
+        --name "$LATEST_ALIAS" \
+        --output none
+    
     echo
     
     # Get deployment outputs
@@ -108,6 +119,7 @@ if [ $? -eq 0 ]; then
     echo "Environment: $ENVIRONMENT"
     echo "Resource Group: $RESOURCE_GROUP_NAME"
     echo "Deployment Name: $DEPLOYMENT_NAME"
+    echo "Latest Alias: $LATEST_ALIAS"
 else
     echo "❌ Deployment failed"
     exit 1
