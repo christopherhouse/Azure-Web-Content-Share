@@ -310,6 +310,9 @@ output uniqueResourceToken string = uniqueResourceToken
 @description('The name of the Container Apps Environment')
 output containerAppsEnvironmentName string = containerAppsEnvironment.outputs.containerAppsEnvironmentName
 
+@description('The name of the Container Registry')
+output containerRegistryName string = containerRegistry.outputs.containerRegistryName
+
 @description('The login server of the Container Registry')
 output containerRegistryLoginServer string = containerRegistry.outputs.loginServer
 
