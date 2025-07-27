@@ -42,6 +42,27 @@ infra/bicep/
 - Bicep CLI installed (`az bicep install`)
 - Appropriate Azure permissions for the target subscription
 - Resource group created in Azure
+- **GitHub Actions Service Principal object ID** (see [GitHub Actions Service Principal Setup](#github-actions-service-principal-setup))
+
+### GitHub Actions Service Principal Setup
+
+For CI/CD deployment, you need to configure the Service Principal object ID in the parameter files:
+
+1. **Find your Service Principal Object ID**:
+   ```bash
+   # Using the Client ID from AZURE_CLIENT_ID secret
+   az ad sp show --id <AZURE_CLIENT_ID> --query id -o tsv
+   ```
+
+2. **Update Parameter Files**:
+   Replace `REPLACE_WITH_ACTUAL_SERVICE_PRINCIPAL_OBJECT_ID` in:
+   - `infra/bicep/parameters/dev.bicepparam`
+   - `infra/bicep/parameters/prod.bicepparam`
+
+   With the actual Service Principal object ID (GUID format).
+
+3. **Why This Is Required**:
+   The GitHub Actions workflow pushes Docker images to Azure Container Registry. This requires the `AcrPush` RBAC permission to be assigned to the Service Principal used by GitHub Actions.
 
 ### Resource Naming Convention
 
@@ -163,6 +184,7 @@ az deployment group what-if \
 ### Role Assignments:
 
 - Container Apps → Container Registry (AcrPull)
+- **GitHub Actions Service Principal → Container Registry (AcrPush)**
 - API Container App → Storage Account (Storage Blob Data Contributor)
 - API Container App → Cosmos DB (Cosmos DB Built-in Data Contributor)
 - API Container App → Key Vault (Key Vault Secrets User)

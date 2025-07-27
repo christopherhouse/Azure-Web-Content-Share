@@ -15,6 +15,9 @@ param buildId string = newGuid()
 @description('The cron expression for the cleanup job schedule (default: every 2 hours)')
 param cleanupJobCronExpression string = '0 */2 * * *'
 
+@description('The object ID of the GitHub Actions Service Principal that needs AcrPush permissions')
+param githubActionsServicePrincipalObjectId string
+
 @description('Tags to apply to all resources')
 param tags object = {
   Application: 'Azure Web Content Share'
@@ -189,6 +192,22 @@ resource frontendContainerAppAcrPullAssignment 'Microsoft.Authorization/roleAssi
   properties: {
     roleDefinitionId: containerRegistryPullRoleDefinition.id
     principalId: containerApps.outputs.frontendContainerAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Container Registry push access to GitHub Actions Service Principal
+resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '8311e382-0749-4cb8-b61a-304f252e45ec' // AcrPush role
+}
+
+resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistryName, 'github-actions', containerRegistryPushRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: containerRegistryPushRoleDefinition.id
+    principalId: githubActionsServicePrincipalObjectId
     principalType: 'ServicePrincipal'
   }
 }
