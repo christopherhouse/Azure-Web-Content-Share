@@ -36,8 +36,7 @@ var storageAccountName = 'st${appName}${uniqueResourceToken}'
 var cosmosDbAccountName = 'cosmos-${appName}-${uniqueResourceToken}'
 var containerRegistryName = 'cr${appName}${uniqueResourceToken}'
 var containerAppsEnvironmentName = 'cae-${appName}-${uniqueResourceToken}'
-var apiContainerAppName = 'ca-${appName}-api-${uniqueResourceToken}'
-var frontendContainerAppName = 'ca-${appName}-frontend-${uniqueResourceToken}'
+var userAssignedManagedIdentityName = 'uami-${appName}-${uniqueResourceToken}'
 var cleanupJobName = 'caj-${appName}-cleanup-${uniqueResourceToken}'
 
 // Deploy Log Analytics workspace first (foundation for other services)
@@ -129,21 +128,24 @@ module containerRegistry 'modules/containerRegistry/main.bicep' = {
   }
 }
 
-// Deploy Container Apps (depends on most other services)
-module containerApps 'modules/containerApps/main.bicep' = {
-  name: 'containerApps-${buildId}'
+// Deploy User Assigned Managed Identity for Container Apps ACR access
+module userAssignedManagedIdentity 'modules/userAssignedManagedIdentity/main.bicep' = {
+  name: 'userAssignedManagedIdentity-${buildId}'
+  params: {
+    location: location
+    userAssignedManagedIdentityName: userAssignedManagedIdentityName
+    tags: tags
+  }
+}
+
+// Deploy Container Apps Environment (without the apps themselves)
+module containerAppsEnvironment 'modules/containerAppsEnvironment/main.bicep' = {
+  name: 'containerAppsEnvironment-${buildId}'
   params: {
     location: location
     containerAppsEnvironmentName: containerAppsEnvironmentName
-    apiContainerAppName: apiContainerAppName
-    frontendContainerAppName: frontendContainerAppName
     logAnalyticsWorkspaceId: logAnalytics.outputs.logAnalyticsWorkspaceId
     logAnalyticsWorkspaceCustomerId: logAnalytics.outputs.logAnalyticsWorkspaceCustomerId
-    containerRegistryLoginServer: containerRegistry.outputs.loginServer
-    applicationInsightsConnectionString: appInsights.outputs.connectionString
-    cosmosDbEndpoint: cosmosDb.outputs.cosmosDbEndpoint
-    storageAccountBlobEndpoint: storageAccount.outputs.blobEndpoint
-    keyVaultUri: keyVault.outputs.keyVaultUri
     tags: tags
   }
 }
@@ -164,44 +166,50 @@ module containerAppsJobs 'modules/containerAppsJobs/main.bicep' = {
     tags: tags
   }
   dependsOn: [
-    containerApps
+    containerAppsEnvironment
   ]
 }
 
-// Role assignments for Container Apps to access other services
+// Role assignments for services to access other resources
 
-// Grant Container Registry pull access to Container Apps
+// Role definitions (defined once and reused)
 resource containerRegistryPullRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull role
 }
 
-resource apiContainerAppAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistryName, apiContainerAppName, containerRegistryPullRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: containerRegistryPullRoleDefinition.id
-    principalId: containerApps.outputs.apiContainerAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource frontendContainerAppAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistryName, frontendContainerAppName, containerRegistryPullRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: containerRegistryPullRoleDefinition.id
-    principalId: containerApps.outputs.frontendContainerAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Container Registry push access to GitHub Actions Service Principal
 resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '8311e382-0749-4cb8-b61a-304f252e45ec' // AcrPush role
 }
 
+resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
+}
+
+resource cosmosDbDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor role
+}
+
+resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User role
+}
+
+// Grant Container Registry pull access to User Assigned Managed Identity (for Container Apps)
+resource uamiAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistryName, userAssignedManagedIdentityName, containerRegistryPullRoleDefinition.id)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: containerRegistryPullRoleDefinition.id
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant Container Registry push access to GitHub Actions Service Principal
 resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerRegistryName, 'github-actions', containerRegistryPushRoleDefinition.id)
   scope: resourceGroup()
@@ -212,50 +220,35 @@ resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments
   }
 }
 
-// Grant Storage Blob Data Contributor access to API Container App
-resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
-}
-
-resource apiContainerAppStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccountName, apiContainerAppName, storageBlobDataContributorRoleDefinition.id)
+// Grant Storage Blob Data Contributor access to UAMI (for Container Apps)
+resource uamiStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountName, userAssignedManagedIdentityName, storageBlobDataContributorRoleDefinition.id)
   scope: resourceGroup()
   properties: {
     roleDefinitionId: storageBlobDataContributorRoleDefinition.id
-    principalId: containerApps.outputs.apiContainerAppPrincipalId
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
 
-// Grant Cosmos DB Data Contributor access to API Container App
-resource cosmosDbDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor role
-}
-
-resource apiContainerAppCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(cosmosDbAccountName, apiContainerAppName, cosmosDbDataContributorRoleDefinition.id)
+// Grant Cosmos DB Data Contributor access to UAMI (for Container Apps)
+resource uamiCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(cosmosDbAccountName, userAssignedManagedIdentityName, cosmosDbDataContributorRoleDefinition.id)
   scope: resourceGroup()
   properties: {
     roleDefinitionId: cosmosDbDataContributorRoleDefinition.id
-    principalId: containerApps.outputs.apiContainerAppPrincipalId
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
 
-// Grant Key Vault Secrets User access to API Container App
-resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User role
-}
-
-resource apiContainerAppKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVaultName, apiContainerAppName, keyVaultSecretsUserRoleDefinition.id)
+// Grant Key Vault Secrets User access to UAMI (for Container Apps)
+resource uamiKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultName, userAssignedManagedIdentityName, keyVaultSecretsUserRoleDefinition.id)
   scope: resourceGroup()
   properties: {
     roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
-    principalId: containerApps.outputs.apiContainerAppPrincipalId
+    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -305,12 +298,6 @@ resource cleanupJobKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2
 }
 
 // Outputs
-@description('The URL of the frontend application')
-output frontendUrl string = 'https://${containerApps.outputs.frontendContainerAppFqdn}'
-
-@description('The URL of the API')
-output apiUrl string = 'https://${containerApps.outputs.apiContainerAppFqdn}'
-
 @description('The name of the resource group')
 output resourceGroupName string = resourceGroup().name
 
@@ -319,3 +306,27 @@ output location string = location
 
 @description('The unique resource token used for naming')
 output uniqueResourceToken string = uniqueResourceToken
+
+@description('The name of the Container Apps Environment')
+output containerAppsEnvironmentName string = containerAppsEnvironment.outputs.containerAppsEnvironmentName
+
+@description('The login server of the Container Registry')
+output containerRegistryLoginServer string = containerRegistry.outputs.loginServer
+
+@description('The resource ID of the User Assigned Managed Identity')
+output userAssignedManagedIdentityId string = userAssignedManagedIdentity.outputs.userAssignedManagedIdentityId
+
+@description('The client ID of the User Assigned Managed Identity')
+output userAssignedManagedIdentityClientId string = userAssignedManagedIdentity.outputs.userAssignedManagedIdentityClientId
+
+@description('The Application Insights connection string')
+output applicationInsightsConnectionString string = appInsights.outputs.connectionString
+
+@description('The Cosmos DB endpoint')
+output cosmosDbEndpoint string = cosmosDb.outputs.cosmosDbEndpoint
+
+@description('The Storage Account blob endpoint')
+output storageAccountBlobEndpoint string = storageAccount.outputs.blobEndpoint
+
+@description('The Key Vault URI')
+output keyVaultUri string = keyVault.outputs.keyVaultUri

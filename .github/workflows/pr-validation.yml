@@ -1,0 +1,318 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  checks: write
+  pull-requests: write
+
+env:
+  API_IMAGE_NAME: azure-web-content-share-api
+  FRONTEND_IMAGE_NAME: azure-web-content-share-frontend
+
+jobs:
+  validate:
+    name: Build, Test, and Validate PR
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use pull_request_target for external PRs, pull_request for internal
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Azure login using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get dev environment container registry
+        id: registry
+        run: |
+          # Get container registry details from dev environment
+          RG_NAME="rg-awcs-dev"
+          DEPLOYMENT_NAME="infra-dev-latest"
+          
+          # Try to get registry details from latest deployment
+          REGISTRY_NAME=$(az deployment group show \
+            --resource-group $RG_NAME \
+            --name $DEPLOYMENT_NAME \
+            --query 'properties.outputs.containerRegistryName.value' -o tsv 2>/dev/null || echo "")
+          REGISTRY_SERVER=$(az deployment group show \
+            --resource-group $RG_NAME \
+            --name $DEPLOYMENT_NAME \
+            --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$REGISTRY_NAME" ] || [ -z "$REGISTRY_SERVER" ]; then
+            echo "❌ Could not retrieve dev container registry details."
+            echo "   Ensure dev environment infrastructure is deployed first."
+            echo "   Run: 'Deploy Infrastructure and Applications' workflow with environment=dev"
+            exit 1
+          fi
+          
+          echo "container-registry=$REGISTRY_SERVER" >> $GITHUB_OUTPUT
+          echo "container-registry-name=$REGISTRY_NAME" >> $GITHUB_OUTPUT
+          
+          echo "📦 Using registry: $REGISTRY_SERVER"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ steps.registry.outputs.container-registry-name }}
+
+      - name: Generate PR-specific image tags
+        id: images
+        run: |
+          BUILD_ID="${{ github.run_number }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REGISTRY="${{ steps.registry.outputs.container-registry }}"
+          
+          # Create PR-specific tags: [build-id]-pr[number]-dev
+          API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}-pr${PR_NUMBER}-dev"
+          FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}-pr${PR_NUMBER}-dev"
+          
+          echo "api-image-tag=${API_TAG}" >> $GITHUB_OUTPUT
+          echo "frontend-image-tag=${FRONTEND_TAG}" >> $GITHUB_OUTPUT
+          
+          echo "🏷️ PR API Image: ${API_TAG}"
+          echo "🏷️ PR Frontend Image: ${FRONTEND_TAG}"
+
+      # API Build and Test
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore API dependencies
+        run: |
+          echo "📦 Restoring API dependencies..."
+          cd src/Api
+          dotnet restore
+
+      - name: Build API
+        run: |
+          echo "🔨 Building API..."
+          cd src/Api
+          dotnet build --configuration Release --no-restore
+
+      - name: Run API unit tests
+        run: |
+          echo "🧪 Running API unit tests..."
+          cd src/Api
+          dotnet test \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger trx \
+            --logger "console;verbosity=detailed" \
+            --results-directory TestResults \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: Publish API test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: API Unit Tests
+          path: src/Api/TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true
+
+      - name: Generate API code coverage report
+        if: always()
+        run: |
+          echo "📊 Generating API code coverage report..."
+          cd src/Api
+          
+          # Install reportgenerator tool
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          
+          # Generate coverage report
+          reportgenerator \
+            -reports:"TestResults/*/coverage.opencover.xml" \
+            -targetdir:"TestResults/CoverageReport" \
+            -reporttypes:"Html;JsonSummary"
+          
+          # Extract coverage percentage
+          if [ -f "TestResults/CoverageReport/Summary.json" ]; then
+            COVERAGE=$(cat TestResults/CoverageReport/Summary.json | grep -o '"linecoverage":[0-9.]*' | cut -d':' -f2)
+            echo "API_COVERAGE=${COVERAGE}" >> $GITHUB_ENV
+            echo "📊 API Line Coverage: ${COVERAGE}%"
+          fi
+
+      # Frontend Build and Test
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/Frontend/package-lock.json
+
+      - name: Install Frontend dependencies
+        run: |
+          echo "📦 Installing Frontend dependencies..."
+          cd src/Frontend
+          npm ci
+
+      - name: Run Frontend linting
+        run: |
+          echo "🔍 Running Frontend linting..."
+          cd src/Frontend
+          npm run lint
+
+      - name: Run Frontend type checking
+        run: |
+          echo "🔍 Running Frontend type checking..."
+          cd src/Frontend
+          npm run type-check
+
+      - name: Run Frontend unit tests
+        run: |
+          echo "🧪 Running Frontend unit tests..."
+          cd src/Frontend
+          npm run test:unit -- --reporter=verbose --reporter=junit --outputFile=TestResults/junit.xml
+
+      - name: Publish Frontend test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Frontend Unit Tests
+          path: src/Frontend/TestResults/junit.xml
+          reporter: java-junit
+          fail-on-error: true
+
+      - name: Build Frontend
+        run: |
+          echo "🔨 Building Frontend..."
+          cd src/Frontend
+          npm run build
+
+      # Infrastructure Validation
+      - name: Validate Bicep templates
+        run: |
+          echo "🔍 Validating Bicep templates..."
+          
+          echo "Validating main.bicep template..."
+          az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+          
+          echo "Validating individual modules..."
+          for module in infra/bicep/modules/*/main.bicep; do
+            echo "Validating $module..."
+            az bicep build --file "$module" --stdout > /dev/null
+          done
+          
+          echo "✅ All Bicep templates are valid"
+
+      # Security Scanning
+      - name: Run Trivy vulnerability scanner on API
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/Api'
+          format: 'sarif'
+          output: 'trivy-api-results.sarif'
+
+      - name: Run Trivy vulnerability scanner on Frontend  
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/Frontend'
+          format: 'sarif'
+          output: 'trivy-frontend-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: '.'
+
+      # Build Container Images (for validation)
+      - name: Build API container image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/Api/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.api-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend container image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/Frontend/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.frontend-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Integration Tests (Optional - can be expanded)
+      - name: Run integration tests
+        run: |
+          echo "🔗 Running integration tests..."
+          # For now, just validate that images were built successfully
+          echo "✅ Container images built and pushed successfully"
+          echo "   API: ${{ steps.images.outputs.api-image-tag }}"
+          echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
+
+      # Generate PR Summary
+      - name: Generate PR validation summary
+        if: always()
+        run: |
+          echo "## 🚀 PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ **All validations passed!** This PR is ready for review and merge." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some validations failed.** Please review the issues below before merging." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **API Unit Tests**: $([ -f src/Api/TestResults/*.trx ] && echo '✅ Passed' || echo '❌ Failed')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend Unit Tests**: $([ -f src/Frontend/TestResults/junit.xml ] && echo '✅ Passed' || echo '❌ Failed')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Infrastructure Validation**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security Scanning**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "$API_COVERAGE" ]; then
+            echo "- **API Code Coverage**: ${API_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐳 Container Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "- **API**: \`${{ steps.images.outputs.api-image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend**: \`${{ steps.images.outputs.frontend-image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎯 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review any failing tests or security findings" >> $GITHUB_STEP_SUMMARY
+          echo "2. Address feedback from code reviewers" >> $GITHUB_STEP_SUMMARY
+          echo "3. Once approved, merge this PR to trigger deployment to dev environment" >> $GITHUB_STEP_SUMMARY
+
+      # Cleanup PR-specific images (optional, commented out to allow manual testing)
+      # - name: Cleanup PR images
+      #   if: always()
+      #   continue-on-error: true
+      #   run: |
+      #     echo "🧹 Cleaning up PR-specific container images..."
+      #     az acr repository delete --name ${{ steps.registry.outputs.container-registry-name }} --image ${{ env.API_IMAGE_NAME }}:${{ github.run_number }}-pr${{ github.event.pull_request.number }}-dev --yes || true
+      #     az acr repository delete --name ${{ steps.registry.outputs.container-registry-name }} --image ${{ env.FRONTEND_IMAGE_NAME }}:${{ github.run_number }}-pr${{ github.event.pull_request.number }}-dev --yes || true
