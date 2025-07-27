@@ -22,6 +22,9 @@ param storageAccountBlobEndpoint string
 @description('The Key Vault URI')
 param keyVaultUri string
 
+@description('The cron expression for the cleanup job schedule')
+param cleanupJobCronExpression string = '0 */2 * * *' // Every 2 hours by default
+
 @description('Tags to apply to resources')
 param tags object = {}
 
@@ -39,9 +42,9 @@ resource cleanupJob 'Microsoft.App/jobs@2024-03-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       scheduleTriggerConfig: {
-        cronExpression: '*/5 * * * *' // Every 5 minutes
+        cronExpression: cleanupJobCronExpression
         parallelism: 1
-        completions: 1
+        replicaCompletionCount: 1
       }
       triggerType: 'Schedule'
       replicaTimeout: 300 // 5 minutes timeout

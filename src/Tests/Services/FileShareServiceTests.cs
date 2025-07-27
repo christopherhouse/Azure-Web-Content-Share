@@ -74,14 +74,26 @@ public class FileShareServiceTests
             .Setup(x => x.GetContainer("ContentShare", "FileMetadata"))
             .Returns(mockContainer.Object);
 
+        // Setup mock cleanup job state service
+        var mockCleanupJobStateService = new Mock<ICleanupJobStateService>();
+        var mockState = _fixture.Create<CleanupJobState>();
+        mockCleanupJobStateService
+            .Setup(x => x.GetStateAsync())
+            .ReturnsAsync(mockState);
+        mockCleanupJobStateService
+            .Setup(x => x.UpdateStateAsync(It.IsAny<CleanupJobState>()))
+            .Returns(Task.CompletedTask);
+
         // Setup query response mock would go here in a real implementation
         // For now, we'll test the method signature and return type
 
         // Act
-        var result = await _sut.CleanupExpiredSharesAsync();
+        var result = await _sut.CleanupExpiredSharesAsync(mockCleanupJobStateService.Object);
 
         // Assert
         result.Should().BeGreaterOrEqualTo(0);
+        mockCleanupJobStateService.Verify(x => x.GetStateAsync(), Times.Once);
+        mockCleanupJobStateService.Verify(x => x.UpdateStateAsync(It.IsAny<CleanupJobState>()), Times.Once);
     }
 
     [Fact]

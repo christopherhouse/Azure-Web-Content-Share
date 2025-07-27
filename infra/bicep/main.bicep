@@ -9,6 +9,12 @@ param appName string = 'awcs'
 @description('The environment suffix (dev, staging, prod)')
 param environmentSuffix string = 'dev'
 
+@description('The GitHub Actions build/run ID for unique deployment naming')
+param buildId string = newGuid()
+
+@description('The cron expression for the cleanup job schedule (default: every 2 hours)')
+param cleanupJobCronExpression string = '0 */2 * * *'
+
 @description('Tags to apply to all resources')
 param tags object = {
   Application: 'Azure Web Content Share'
@@ -33,7 +39,7 @@ var cleanupJobName = 'caj-${appName}-cleanup-${uniqueResourceToken}'
 
 // Deploy Log Analytics workspace first (foundation for other services)
 module logAnalytics 'modules/logAnalytics/main.bicep' = {
-  name: 'logAnalytics-deployment'
+  name: 'logAnalytics-${buildId}'
   params: {
     location: location
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
@@ -45,7 +51,7 @@ module logAnalytics 'modules/logAnalytics/main.bicep' = {
 
 // Deploy Application Insights (depends on Log Analytics)
 module appInsights 'modules/appInsights/main.bicep' = {
-  name: 'appInsights-deployment'
+  name: 'appInsights-${buildId}'
   params: {
     location: location
     applicationInsightsName: applicationInsightsName
@@ -57,7 +63,7 @@ module appInsights 'modules/appInsights/main.bicep' = {
 
 // Deploy Key Vault
 module keyVault 'modules/keyVault/main.bicep' = {
-  name: 'keyVault-deployment'
+  name: 'keyVault-${buildId}'
   params: {
     location: location
     keyVaultName: keyVaultName
@@ -73,7 +79,7 @@ module keyVault 'modules/keyVault/main.bicep' = {
 
 // Deploy Storage Account
 module storageAccount 'modules/storageAccount/main.bicep' = {
-  name: 'storageAccount-deployment'
+  name: 'storageAccount-${buildId}'
   params: {
     location: location
     storageAccountName: storageAccountName
@@ -90,7 +96,7 @@ module storageAccount 'modules/storageAccount/main.bicep' = {
 
 // Deploy Cosmos DB
 module cosmosDb 'modules/cosmosDb/main.bicep' = {
-  name: 'cosmosDb-deployment'
+  name: 'cosmosDb-${buildId}'
   params: {
     location: location
     cosmosDbAccountName: cosmosDbAccountName
@@ -108,7 +114,7 @@ module cosmosDb 'modules/cosmosDb/main.bicep' = {
 
 // Deploy Container Registry
 module containerRegistry 'modules/containerRegistry/main.bicep' = {
-  name: 'containerRegistry-deployment'
+  name: 'containerRegistry-${buildId}'
   params: {
     location: location
     containerRegistryName: containerRegistryName
@@ -122,7 +128,7 @@ module containerRegistry 'modules/containerRegistry/main.bicep' = {
 
 // Deploy Container Apps (depends on most other services)
 module containerApps 'modules/containerApps/main.bicep' = {
-  name: 'containerApps-deployment'
+  name: 'containerApps-${buildId}'
   params: {
     location: location
     containerAppsEnvironmentName: containerAppsEnvironmentName
@@ -141,11 +147,12 @@ module containerApps 'modules/containerApps/main.bicep' = {
 
 // Deploy Container Apps Jobs (depends on Container Apps Environment)
 module containerAppsJobs 'modules/containerAppsJobs/main.bicep' = {
-  name: 'containerAppsJobs-deployment'
+  name: 'containerAppsJobs-${buildId}'
   params: {
     location: location
     containerAppsEnvironmentName: containerAppsEnvironmentName
     cleanupJobName: cleanupJobName
+    cleanupJobCronExpression: cleanupJobCronExpression
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
     applicationInsightsConnectionString: appInsights.outputs.connectionString
     cosmosDbEndpoint: cosmosDb.outputs.cosmosDbEndpoint

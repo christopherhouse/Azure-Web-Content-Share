@@ -209,40 +209,85 @@ public class FileShareService : IFileShareService
     }
 
     /// <inheritdoc/>
-    public async Task<int> CleanupExpiredSharesAsync()
+    public async Task<int> CleanupExpiredSharesAsync(ICleanupJobStateService cleanupJobStateService)
     {
         try
         {
+            // Get the current state to determine high water mark
+            var state = await cleanupJobStateService.GetStateAsync();
+            var highWaterMark = state.LastProcessedTimestamp;
+            var currentTimestamp = DateTimeOffset.UtcNow;
+            
+            _logger.LogInformation("Starting cleanup job. High water mark: {HighWaterMark}, Current time: {CurrentTime}", 
+                highWaterMark, currentTimestamp);
+
             var container = await GetCosmosContainerAsync();
-            var query = new QueryDefinition(
-                "SELECT * FROM c WHERE c.expiresAt < @now AND c.isDeleted = false")
-                .WithParameter("@now", DateTime.UtcNow);
+            
+            // Query for shares that are expired AND have been updated since the last run
+            // This ensures we only process shares that have changed or expired since last run
+            var query = new QueryDefinition(@"
+                SELECT * FROM c 
+                WHERE c.expiresAt < @now 
+                  AND c.isDeleted = false 
+                  AND (c._ts > @highWaterMarkUnix OR c.expiresAt > @highWaterMark)
+                ORDER BY c._ts ASC")
+                .WithParameter("@now", DateTime.UtcNow)
+                .WithParameter("@highWaterMark", highWaterMark.DateTime)
+                .WithParameter("@highWaterMarkUnix", ((DateTimeOffset)highWaterMark).ToUnixTimeSeconds());
 
             var iterator = container.GetItemQueryIterator<FileShareMetadata>(query);
             var cleanedCount = 0;
+            var lastProcessedTimestamp = highWaterMark;
 
             while (iterator.HasMoreResults)
             {
                 var response = await iterator.ReadNextAsync();
                 foreach (var metadata in response)
                 {
-                    // Soft delete metadata
-                    metadata.IsDeleted = true;
-                    metadata.UpdatedAt = DateTime.UtcNow;
-                    metadata.Ttl = 180 * 24 * 60 * 60; // 180 days
+                    try
+                    {
+                        // Soft delete metadata
+                        metadata.IsDeleted = true;
+                        metadata.UpdatedAt = DateTime.UtcNow;
+                        metadata.Ttl = 180 * 24 * 60 * 60; // 180 days
 
-                    await container.ReplaceItemAsync(metadata, metadata.Id, new PartitionKey(metadata.UserId));
+                        await container.ReplaceItemAsync(metadata, metadata.Id, new PartitionKey(metadata.UserId));
 
-                    // Hard delete blob
-                    var blobContainer = _blobServiceClient.GetBlobContainerClient(_azureOptions.Storage.ContainerName);
-                    var blobClient = blobContainer.GetBlobClient(metadata.BlobPath);
-                    await blobClient.DeleteIfExistsAsync();
+                        // Hard delete blob
+                        var blobContainer = _blobServiceClient.GetBlobContainerClient(_azureOptions.Storage.ContainerName);
+                        var blobClient = blobContainer.GetBlobClient(metadata.BlobPath);
+                        await blobClient.DeleteIfExistsAsync();
 
-                    cleanedCount++;
+                        cleanedCount++;
+                        
+                        // Update high water mark to the latest processed timestamp
+                        // Use the Cosmos DB timestamp (_ts) converted to DateTimeOffset
+                        if (metadata.UpdatedAt > lastProcessedTimestamp.DateTime)
+                        {
+                            lastProcessedTimestamp = new DateTimeOffset(metadata.UpdatedAt, TimeSpan.Zero);
+                        }
+                        
+                        _logger.LogDebug("Cleaned up expired share {ShareId} for user {UserId}", 
+                            metadata.Id, metadata.UserId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to cleanup share {ShareId} for user {UserId}", 
+                            metadata.Id, metadata.UserId);
+                        // Continue processing other shares even if one fails
+                    }
                 }
             }
 
-            _logger.LogInformation("Cleaned up {Count} expired shares", cleanedCount);
+            // Update the state with new high water mark and statistics
+            state.LastProcessedTimestamp = lastProcessedTimestamp;
+            state.LastRunProcessedCount = cleanedCount;
+            state.LastRunTimestamp = currentTimestamp;
+            await cleanupJobStateService.UpdateStateAsync(state);
+
+            _logger.LogInformation("Cleanup job completed. Cleaned up {Count} expired shares. New high water mark: {NewHighWaterMark}", 
+                cleanedCount, lastProcessedTimestamp);
+            
             return cleanedCount;
         }
         catch (Exception ex)

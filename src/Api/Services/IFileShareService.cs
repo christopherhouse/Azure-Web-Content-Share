@@ -46,8 +46,9 @@ public interface IFileShareService
     Task<bool> DeleteShareAsync(string shareId, string userId);
     
     /// <summary>
-    /// Clean up expired shares (background job)
+    /// Clean up expired shares using high water mark for efficiency (background job)
     /// </summary>
+    /// <param name="cleanupJobStateService">Service for managing cleanup job state</param>
     /// <returns>Number of shares cleaned up</returns>
-    Task<int> CleanupExpiredSharesAsync();
+    Task<int> CleanupExpiredSharesAsync(ICleanupJobStateService cleanupJobStateService);
 }

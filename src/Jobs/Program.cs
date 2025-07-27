@@ -28,7 +28,8 @@ public class Program
             logger.LogInformation("Starting expired share cleanup job");
             
             var fileShareService = scope.ServiceProvider.GetRequiredService<IFileShareService>();
-            var cleanedCount = await fileShareService.CleanupExpiredSharesAsync();
+            var cleanupJobStateService = scope.ServiceProvider.GetRequiredService<ICleanupJobStateService>();
+            var cleanedCount = await fileShareService.CleanupExpiredSharesAsync(cleanupJobStateService);
             
             logger.LogInformation("Cleanup job completed successfully. Cleaned up {Count} expired shares", cleanedCount);
             return 0;
@@ -83,6 +84,7 @@ public class Program
                 // Register application services
                 services.AddScoped<IEncryptionService, EncryptionService>();
                 services.AddScoped<IFileShareService, FileShareService>();
+                services.AddScoped<ICleanupJobStateService, CleanupJobStateService>();
             })
             .ConfigureLogging((context, logging) =>
             {
