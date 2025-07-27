@@ -144,6 +144,24 @@ The infrastructure is automatically deployed using GitHub Actions workflow (`.gi
 
 ## 🔧 Validation and Testing
 
+### Service Principal Validation
+
+Use the provided validation script to verify GitHub Actions Service Principal setup:
+
+```bash
+# Validate Service Principal for development environment
+./infra/validate-service-principal.sh <AZURE_CLIENT_ID> dev
+
+# Validate Service Principal for production environment  
+./infra/validate-service-principal.sh <AZURE_CLIENT_ID> prod
+```
+
+This script will:
+- ✅ Find the Service Principal object ID from the client ID
+- ✅ Verify the resource group and Container Registry exist
+- ✅ Check if AcrPush role assignment is properly configured
+- ✅ Test ACR access (when possible)
+
 ### Template Validation
 
 ```bash
