@@ -69,6 +69,7 @@ public static class FileShareEndpoints
         IFormFile file,
         [FromForm] ShareFileRequest request,
         IFileShareService fileShareService,
+        IUserService userService,
         HttpContext context)
     {
         try
@@ -91,10 +92,18 @@ public static class FileShareEndpoints
                 });
             }
 
-            // TODO: Get actual user ID from authentication context
-            var userId = "temp-user-id"; // Placeholder until authentication is implemented
+            var currentUser = await userService.GetCurrentUserAsync(context);
+            if (currentUser == null)
+            {
+                return Results.Unauthorized();
+            }
 
-            var response = await fileShareService.ShareFileAsync(file, request, userId);
+            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            {
+                return Results.Forbid();
+            }
+
+            var response = await fileShareService.ShareFileAsync(file, request, currentUser.Id);
             return Results.Created($"/api/files/metadata/{response.ShareCode}", response);
         }
         catch (Exception ex)
@@ -181,14 +190,23 @@ public static class FileShareEndpoints
     /// </summary>
     private static async Task<IResult> GetMySharesAsync(
         IFileShareService fileShareService,
+        IUserService userService,
         HttpContext context)
     {
         try
         {
-            // TODO: Get actual user ID from authentication context
-            var userId = "temp-user-id"; // Placeholder until authentication is implemented
+            var currentUser = await userService.GetCurrentUserAsync(context);
+            if (currentUser == null)
+            {
+                return Results.Unauthorized();
+            }
 
-            var shares = await fileShareService.GetUserSharesAsync(userId);
+            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            {
+                return Results.Forbid();
+            }
+
+            var shares = await fileShareService.GetUserSharesAsync(currentUser.Id);
             return Results.Ok(shares);
         }
         catch (Exception ex)
@@ -206,14 +224,23 @@ public static class FileShareEndpoints
     private static async Task<IResult> DeleteShareAsync(
         string shareId,
         IFileShareService fileShareService,
+        IUserService userService,
         HttpContext context)
     {
         try
         {
-            // TODO: Get actual user ID from authentication context
-            var userId = "temp-user-id"; // Placeholder until authentication is implemented
+            var currentUser = await userService.GetCurrentUserAsync(context);
+            if (currentUser == null)
+            {
+                return Results.Unauthorized();
+            }
 
-            var success = await fileShareService.DeleteShareAsync(shareId, userId);
+            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            {
+                return Results.Forbid();
+            }
+
+            var success = await fileShareService.DeleteShareAsync(shareId, currentUser.Id);
 
             if (!success)
             {

@@ -43,6 +43,10 @@ builder.Services.AddSingleton(serviceProvider =>
 // Register application services
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IFileShareService, FileShareService>();
+builder.Services.AddScoped<IUserService, UserService>();
+
+// Register background services
+builder.Services.AddHostedService<ExpiredShareCleanupService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
