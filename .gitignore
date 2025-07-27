@@ -54,4 +54,4 @@ TestResult.xml
 nunit-*.xml
 
 # Bicep compiled templates
-*.json
+infra/**/*.json
