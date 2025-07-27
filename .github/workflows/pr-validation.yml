@@ -118,7 +118,6 @@ jobs:
           cd src/Tests
           dotnet test \
             --configuration Release \
-            --no-build \
             --verbosity normal \
             --logger trx \
             --logger "console;verbosity=detailed" \
