@@ -50,10 +50,23 @@ public class FileShareServiceTests
     [AutoData]
     public async Task GetFileByShareCodeAsync_WithInvalidCode_ShouldReturnNull(string invalidCode)
     {
-        // Arrange
+        // Arrange - mock EncryptAsync to return a value, but no database results will match
         _mockEncryptionService
-            .Setup(x => x.DecryptAsync(invalidCode))
-            .ReturnsAsync((string?)null);
+            .Setup(x => x.EncryptAsync(invalidCode))
+            .ReturnsAsync("encrypted-invalid-code");
+
+        var mockContainer = new Mock<Container>();
+        _mockCosmosClient
+            .Setup(x => x.GetContainer("ContentShare", "FileMetadata"))
+            .Returns(mockContainer.Object);
+
+        // Mock empty query result
+        var mockIterator = new Mock<FeedIterator<FileShareMetadata>>();
+        var mockResponse = new Mock<FeedResponse<FileShareMetadata>>();
+        mockResponse.Setup(x => x.GetEnumerator()).Returns(new List<FileShareMetadata>().GetEnumerator());
+        mockIterator.Setup(x => x.ReadNextAsync(default)).ReturnsAsync(mockResponse.Object);
+        mockContainer.Setup(x => x.GetItemQueryIterator<FileShareMetadata>(It.IsAny<QueryDefinition>(), null, null))
+                    .Returns(mockIterator.Object);
 
         // Act
         var result = await _sut.GetFileByShareCodeAsync(invalidCode);
