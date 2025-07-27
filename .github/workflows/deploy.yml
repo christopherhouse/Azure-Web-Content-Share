@@ -268,6 +268,16 @@ jobs:
           failOnStdErr: false
           deploymentName: 'infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}'
           
+      - name: Create latest deployment alias
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          resourceGroupName: ${{ needs.determine-environment.outputs.resource-group }}
+          template: infra/bicep/main.bicep
+          parameters: infra/bicep/parameters/${{ needs.determine-environment.outputs.environment }}.bicepparam
+          failOnStdErr: false
+          deploymentName: 'infra-${{ needs.determine-environment.outputs.environment }}-latest'
+
       - name: Output deployment results
         run: |
           echo "✅ Infrastructure deployed successfully"
