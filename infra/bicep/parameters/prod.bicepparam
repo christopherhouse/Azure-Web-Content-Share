@@ -1,4 +1,4 @@
-using 'main.bicep'
+using '../main.bicep'
 
 param location = 'eastus2'
 param appName = 'awcs'
