@@ -22,13 +22,19 @@ public class FileShareService : IFileShareService
         BlobServiceClient blobServiceClient,
         CosmosClient cosmosClient,
         IEncryptionService encryptionService,
-        IOptions<AzureOptions> azureOptions,
+        IOptions<AzureOptions> options,
         ILogger<FileShareService> logger)
     {
+        ArgumentNullException.ThrowIfNull(blobServiceClient);
+        ArgumentNullException.ThrowIfNull(cosmosClient);
+        ArgumentNullException.ThrowIfNull(encryptionService);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+        
         _blobServiceClient = blobServiceClient;
         _cosmosClient = cosmosClient;
         _encryptionService = encryptionService;
-        _azureOptions = azureOptions.Value;
+        _azureOptions = options.Value;
         _logger = logger;
     }
 
@@ -211,13 +217,15 @@ public class FileShareService : IFileShareService
     /// <inheritdoc/>
     public async Task<int> CleanupExpiredSharesAsync(ICleanupJobStateService cleanupJobStateService)
     {
+        // Get the current state to determine high water mark
+        var state = await cleanupJobStateService.GetStateAsync();
+        var highWaterMark = state.LastProcessedTimestamp;
+        var currentTimestamp = DateTimeOffset.UtcNow;
+        var cleanedCount = 0;
+        var lastProcessedTimestamp = highWaterMark;
+        
         try
         {
-            // Get the current state to determine high water mark
-            var state = await cleanupJobStateService.GetStateAsync();
-            var highWaterMark = state.LastProcessedTimestamp;
-            var currentTimestamp = DateTimeOffset.UtcNow;
-            
             _logger.LogInformation("Starting cleanup job. High water mark: {HighWaterMark}, Current time: {CurrentTime}", 
                 highWaterMark, currentTimestamp);
 
@@ -236,8 +244,6 @@ public class FileShareService : IFileShareService
                 .WithParameter("@highWaterMarkUnix", ((DateTimeOffset)highWaterMark).ToUnixTimeSeconds());
 
             var iterator = container.GetItemQueryIterator<FileShareMetadata>(query);
-            var cleanedCount = 0;
-            var lastProcessedTimestamp = highWaterMark;
 
             while (iterator.HasMoreResults)
             {
@@ -279,22 +285,23 @@ public class FileShareService : IFileShareService
                 }
             }
 
-            // Update the state with new high water mark and statistics
-            state.LastProcessedTimestamp = lastProcessedTimestamp;
-            state.LastRunProcessedCount = cleanedCount;
-            state.LastRunTimestamp = currentTimestamp;
-            await cleanupJobStateService.UpdateStateAsync(state);
-
             _logger.LogInformation("Cleanup job completed. Cleaned up {Count} expired shares. New high water mark: {NewHighWaterMark}", 
                 cleanedCount, lastProcessedTimestamp);
-            
-            return cleanedCount;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to cleanup expired shares");
-            return 0;
         }
+        finally
+        {
+            // Always update the state with new high water mark and statistics, regardless of success or failure
+            state.LastProcessedTimestamp = lastProcessedTimestamp;
+            state.LastRunProcessedCount = cleanedCount;
+            state.LastRunTimestamp = currentTimestamp;
+            await cleanupJobStateService.UpdateStateAsync(state);
+        }
+        
+        return cleanedCount;
     }
 
     private async Task<Container> GetCosmosContainerAsync()

@@ -21,6 +21,10 @@ public class EncryptionService : IEncryptionService
         IOptions<AzureOptions> azureOptions,
         ILogger<EncryptionService> logger)
     {
+        ArgumentNullException.ThrowIfNull(secretClient);
+        ArgumentNullException.ThrowIfNull(azureOptions);
+        ArgumentNullException.ThrowIfNull(logger);
+        
         _secretClient = secretClient;
         _azureOptions = azureOptions.Value;
         _logger = logger;
@@ -29,6 +33,9 @@ public class EncryptionService : IEncryptionService
     /// <inheritdoc/>
     public async Task<string> EncryptAsync(string plainText)
     {
+        ArgumentNullException.ThrowIfNull(plainText);
+        ArgumentException.ThrowIfNullOrWhiteSpace(plainText);
+        
         try
         {
             var key = await GetEncryptionKeyAsync();
@@ -55,12 +62,15 @@ public class EncryptionService : IEncryptionService
     }
 
     /// <inheritdoc/>
-    public async Task<string> DecryptAsync(string encryptedText)
+    public async Task<string> DecryptAsync(string cipherText)
     {
+        ArgumentNullException.ThrowIfNull(cipherText);
+        ArgumentException.ThrowIfNullOrWhiteSpace(cipherText);
+        
         try
         {
             var key = await GetEncryptionKeyAsync();
-            var encryptedData = Convert.FromBase64String(encryptedText);
+            var encryptedData = Convert.FromBase64String(cipherText);
 
             using var aes = Aes.Create();
             aes.Key = Convert.FromBase64String(key);

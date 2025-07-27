@@ -73,8 +73,7 @@ public class EncryptionServiceTests
             .WithParameterName("cipherText");
     }
 
-    [Theory]
-    [AutoData]
+    [Fact]
     public void Constructor_WithNullParameters_ShouldThrowArgumentNullException()
     {
         // Act & Assert

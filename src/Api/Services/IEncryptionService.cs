@@ -15,9 +15,9 @@ public interface IEncryptionService
     /// <summary>
     /// Decrypt a share code
     /// </summary>
-    /// <param name="encryptedText">Encrypted text to decrypt</param>
+    /// <param name="cipherText">Encrypted text to decrypt</param>
     /// <returns>Plain text</returns>
-    Task<string> DecryptAsync(string encryptedText);
+    Task<string> DecryptAsync(string cipherText);
     
     /// <summary>
     /// Generate a random share code
