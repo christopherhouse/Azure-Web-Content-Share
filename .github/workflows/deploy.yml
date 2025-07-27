@@ -99,7 +99,8 @@ jobs:
           dotnet build --configuration Release --no-restore
           
           echo "🧪 Testing API..."
-          dotnet test --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
+          cd ../Tests
+          dotnet test --configuration Release --verbosity normal --logger trx --results-directory TestResults
           
       - name: Build and test Frontend
         run: |
@@ -198,7 +199,7 @@ jobs:
         if: always()
         with:
           name: API Tests
-          path: src/Api/TestResults/*.trx
+          path: src/Tests/TestResults/*.trx
           reporter: dotnet-trx
 
       - name: Build summary
