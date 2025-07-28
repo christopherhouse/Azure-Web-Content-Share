@@ -1,0 +1,251 @@
+# API Gateway Caddyfile for Azure Web Content Share
+# Provides security, rate limiting, and reverse proxy to internal API
+
+{
+    # Global options
+    admin off
+    persist_config off
+    
+    # Security settings
+    servers {
+        protocols h1 h2 h3
+    }
+    
+    # Order directive to ensure rate limiting runs before reverse proxy
+    order rate_limit before reverse_proxy
+}
+
+# Main API Gateway server block
+:8080 {
+    # Rate limiting configuration
+    rate_limit {
+        zone api_zone {
+            key {remote_host}
+            events 100
+            window 1m
+        }
+        
+        zone upload_zone {
+            key {remote_host}
+            events 10
+            window 1m
+        }
+        
+        zone auth_zone {
+            key {remote_host}
+            events 20
+            window 1m
+        }
+    }
+    
+    # Apply rate limiting to specific routes
+    @api_routes {
+        path_regexp ^/api/(?!health).*$
+    }
+    
+    @upload_routes {
+        path_regexp ^/api/files.*$
+        method POST PUT
+    }
+    
+    @auth_routes {
+        path_regexp ^/api/auth.*$
+    }
+    
+    # Block common attack patterns with rewrite rules
+    @sql_injection {
+        path_regexp (?i)(union|select|insert|delete|drop|create|alter|exec|script)
+    }
+    
+    @xss_attempts {
+        path_regexp (?i)(<script|javascript:|data:text/html|vbscript:|onload=|onerror=)
+    }
+    
+    @path_traversal {
+        path_regexp (\.\./)|(\.\.\\)|(%2e%2e%2f)|(%2e%2e%5c)
+    }
+    
+    @command_injection {
+        path_regexp (?i)(;|\||\||&|`|\$\(|\$\{)
+    }
+    
+    # Block malicious requests
+    handle @sql_injection {
+        respond "Access Denied: SQL Injection Detected" 403
+    }
+    
+    handle @xss_attempts {
+        respond "Access Denied: XSS Detected" 403
+    }
+    
+    handle @path_traversal {
+        respond "Access Denied: Path Traversal Detected" 403
+    }
+    
+    handle @command_injection {
+        respond "Access Denied: Command Injection Detected" 403
+    }
+    
+    # Health check endpoint (no rate limiting)
+    respond /health 200 {
+        body "healthy"
+        close
+    }
+    
+    # Apply rate limiting and reverse proxy
+    handle @upload_routes {
+        rate_limit upload_zone
+        reverse_proxy {env.API_INTERNAL_URL} {
+            header_up Host {upstream_hostport}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Gateway "API-Gateway"
+            
+            # Health check for upstream
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            
+            # Load balancing (single upstream for now)
+            lb_policy round_robin
+        }
+    }
+    
+    handle @auth_routes {
+        rate_limit auth_zone
+        reverse_proxy {env.API_INTERNAL_URL} {
+            header_up Host {upstream_hostport}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Gateway "API-Gateway"
+            
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            lb_policy round_robin
+        }
+    }
+    
+    handle @api_routes {
+        rate_limit api_zone
+        reverse_proxy {env.API_INTERNAL_URL} {
+            header_up Host {upstream_hostport}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Gateway "API-Gateway"
+            
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            lb_policy round_robin
+        }
+    }
+    
+    # Default handler for other requests
+    handle {
+        reverse_proxy {env.API_INTERNAL_URL} {
+            header_up Host {upstream_hostport}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Gateway "API-Gateway"
+            
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            lb_policy round_robin
+        }
+    }
+    
+    # Security headers
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Enable XSS protection
+        X-XSS-Protection "1; mode=block"
+        
+        # Referrer policy for privacy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Content Security Policy for API
+        Content-Security-Policy "default-src 'none'; frame-ancestors 'none';"
+        
+        # Remove server information
+        -Server
+        
+        # HSTS for HTTPS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Additional security headers
+        X-Permitted-Cross-Domain-Policies "none"
+        Cross-Origin-Embedder-Policy "require-corp"
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Resource-Policy "same-site"
+        
+        # Add gateway identification
+        X-Gateway "Azure-Web-Content-Share-Gateway"
+    }
+    
+    # Compression for responses
+    encode {
+        gzip 6
+        minimum_length 1024
+    }
+    
+    # Structured access logging with security events
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100MB
+            roll_keep 10
+            roll_keep_for 168h
+        }
+        format json {
+            message_key "message"
+            level_key "level"
+            time_key "timestamp"
+            time_format "2006-01-02T15:04:05.000Z07:00"
+            time_local false
+            
+            # Add security context
+            remote_ip {remote_host}
+            user_agent {request.header.User-Agent}
+            method {request.method}
+            uri {request.uri}
+            status {response.status}
+            size {response.size}
+            duration {request.duration}
+            upstream {upstream_hostport}
+        }
+        level INFO
+    }
+    
+    # Error handling
+    handle_errors {
+        @4xx {
+            expression {http.error.status_code} >= 400 && {http.error.status_code} < 500
+        }
+        
+        @5xx {
+            expression {http.error.status_code} >= 500
+        }
+        
+        handle @4xx {
+            respond "Client Error: {http.error.status_code}" {http.error.status_code}
+        }
+        
+        handle @5xx {
+            respond "Server Error: {http.error.status_code}" {http.error.status_code}
+        }
+    }
+}

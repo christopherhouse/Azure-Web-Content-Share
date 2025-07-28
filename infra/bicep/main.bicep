@@ -33,6 +33,9 @@ var storageAccountName = 'st${appName}${uniqueResourceToken}'
 var cosmosDbAccountName = 'cosmos-${appName}-${uniqueResourceToken}'
 var containerRegistryName = 'cr${appName}${uniqueResourceToken}'
 var containerAppsEnvironmentName = 'cae-${appName}-${uniqueResourceToken}'
+var apiGatewayContainerAppName = 'ca-gateway-${appName}-${uniqueResourceToken}'
+var apiContainerAppName = 'ca-api-${appName}-${uniqueResourceToken}'
+var frontendContainerAppName = 'ca-frontend-${appName}-${uniqueResourceToken}'
 var userAssignedManagedIdentityName = 'uami-${appName}-${uniqueResourceToken}'
 
 // Deploy Log Analytics workspace first (foundation for other services)
@@ -146,6 +149,34 @@ module containerAppsEnvironment 'modules/containerAppsEnvironment/main.bicep' = 
   }
 }
 
+// Deploy Container Apps (API Gateway, API, and Frontend)
+module containerApps 'modules/containerApps/main.bicep' = {
+  name: 'containerApps-${buildId}'
+  params: {
+    location: location
+    containerAppsEnvironmentName: containerAppsEnvironment.outputs.containerAppsEnvironmentName
+    apiGatewayContainerAppName: apiGatewayContainerAppName
+    apiContainerAppName: apiContainerAppName
+    frontendContainerAppName: frontendContainerAppName
+    logAnalyticsWorkspaceId: logAnalytics.outputs.logAnalyticsWorkspaceId
+    logAnalyticsWorkspaceCustomerId: logAnalytics.outputs.logAnalyticsWorkspaceCustomerId
+    containerRegistryLoginServer: containerRegistry.outputs.loginServer
+    applicationInsightsConnectionString: applicationInsights.outputs.connectionString
+    cosmosDbEndpoint: cosmosDb.outputs.endpoint
+    storageAccountBlobEndpoint: storageAccount.outputs.blobEndpoint
+    keyVaultUri: keyVault.outputs.keyVaultUri
+    tags: tags
+  }
+  dependsOn: [
+    containerAppsEnvironment
+    containerRegistry
+    applicationInsights
+    cosmosDb
+    storageAccount
+    keyVault
+  ]
+}
+
 // Role assignments for services to access other resources
 
 // Role definitions (defined once and reused)
@@ -218,6 +249,15 @@ output containerRegistryLoginServer string = containerRegistry.outputs.loginServ
 
 @description('The resource ID of the User Assigned Managed Identity')
 output userAssignedManagedIdentityId string = userAssignedManagedIdentity.outputs.userAssignedManagedIdentityId
+
+@description('The FQDN of the API Gateway Container App')
+output apiGatewayContainerAppFqdn string = containerApps.outputs.apiGatewayContainerAppFqdn
+
+@description('The FQDN of the API Container App (internal)')
+output apiContainerAppFqdn string = containerApps.outputs.apiContainerAppFqdn
+
+@description('The FQDN of the Frontend Container App')
+output frontendContainerAppFqdn string = containerApps.outputs.frontendContainerAppFqdn
 
 @description('The client ID of the User Assigned Managed Identity')
 output userAssignedManagedIdentityClientId string = userAssignedManagedIdentity.outputs.userAssignedManagedIdentityClientId

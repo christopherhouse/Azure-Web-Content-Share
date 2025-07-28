@@ -38,6 +38,7 @@ permissions:
 
 env:
   API_IMAGE_NAME: azure-web-content-share-api
+  API_GATEWAY_IMAGE_NAME: azure-web-content-share-api-gateway
   FRONTEND_IMAGE_NAME: azure-web-content-share-frontend
   JOBS_IMAGE_NAME: azure-web-content-share-jobs
 
@@ -149,14 +150,17 @@ jobs:
           REGISTRY="ghcr.io/${{ github.repository_owner }}"
           
           API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
+          API_GATEWAY_TAG="${REGISTRY}/${{ env.API_GATEWAY_IMAGE_NAME }}:${BUILD_ID}"
           FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
           JOBS_TAG="${REGISTRY}/${{ env.JOBS_IMAGE_NAME }}:${BUILD_ID}"
           
           echo "api-image-tag=${API_TAG}" >> $GITHUB_OUTPUT
+          echo "api-gateway-image-tag=${API_GATEWAY_TAG}" >> $GITHUB_OUTPUT
           echo "frontend-image-tag=${FRONTEND_TAG}" >> $GITHUB_OUTPUT
           echo "jobs-image-tag=${JOBS_TAG}" >> $GITHUB_OUTPUT
           
           echo "🏷️ API Image: ${API_TAG}"
+          echo "🏷️ API Gateway Image: ${API_GATEWAY_TAG}"
           echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
           echo "🏷️ Jobs Image: ${JOBS_TAG}"
 
@@ -167,6 +171,18 @@ jobs:
           file: ./src/Api/Dockerfile
           push: true
           tags: ${{ steps.images.outputs.api-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
+
+      - name: Build and push API Gateway image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/ApiGateway/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.api-gateway-image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           sbom: true
@@ -213,6 +229,14 @@ jobs:
           format: 'sarif'
           output: 'trivy-frontend-results.sarif'
 
+      - name: Run Trivy vulnerability scanner on API Gateway
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/ApiGateway'
+          format: 'sarif'
+          output: 'trivy-api-gateway-results.sarif'
+
       - name: Run Trivy vulnerability scanner on Jobs
         uses: aquasecurity/trivy-action@master
         with:
@@ -234,6 +258,13 @@ jobs:
         with:
           sarif_file: 'trivy-frontend-results.sarif'
           category: 'trivy-frontend'
+
+      - name: Upload API Gateway Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-api-gateway-results.sarif'
+          category: 'trivy-api-gateway'
 
       - name: Upload Jobs Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -560,11 +591,13 @@ jobs:
           
           # Generate ACR image tags
           ACR_API_TAG="${ACR_REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
+          ACR_API_GATEWAY_TAG="${ACR_REGISTRY}/${{ env.API_GATEWAY_IMAGE_NAME }}:${BUILD_ID}"
           ACR_FRONTEND_TAG="${ACR_REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
           ACR_JOBS_TAG="${ACR_REGISTRY}/${{ env.JOBS_IMAGE_NAME }}:${BUILD_ID}"
           
           echo "🔄 Promoting images from GHCR to ACR..."
           echo "   API: ${{ steps.config.outputs.api-image-tag }} → ${ACR_API_TAG}"
+          echo "   API Gateway: ${{ steps.config.outputs.api-gateway-image-tag }} → ${ACR_API_GATEWAY_TAG}"
           echo "   Frontend: ${{ steps.config.outputs.frontend-image-tag }} → ${ACR_FRONTEND_TAG}"
           echo "   Jobs: ${{ steps.config.outputs.jobs-image-tag }} → ${ACR_JOBS_TAG}"
           
@@ -572,6 +605,10 @@ jobs:
           docker pull ${{ steps.config.outputs.api-image-tag }}
           docker tag ${{ steps.config.outputs.api-image-tag }} ${ACR_API_TAG}
           docker push ${ACR_API_TAG}
+          
+          docker pull ${{ steps.config.outputs.api-gateway-image-tag }}
+          docker tag ${{ steps.config.outputs.api-gateway-image-tag }} ${ACR_API_GATEWAY_TAG}
+          docker push ${ACR_API_GATEWAY_TAG}
           
           docker pull ${{ steps.config.outputs.frontend-image-tag }}
           docker tag ${{ steps.config.outputs.frontend-image-tag }} ${ACR_FRONTEND_TAG}
@@ -583,10 +620,43 @@ jobs:
           
           # Set ACR image tags for deployment
           echo "api-image-tag=${ACR_API_TAG}" >> $GITHUB_OUTPUT
+          echo "api-gateway-image-tag=${ACR_API_GATEWAY_TAG}" >> $GITHUB_OUTPUT
           echo "frontend-image-tag=${ACR_FRONTEND_TAG}" >> $GITHUB_OUTPUT
           echo "jobs-image-tag=${ACR_JOBS_TAG}" >> $GITHUB_OUTPUT
           
           echo "✅ Image promotion completed"
+
+      - name: Deploy API Gateway to Container Apps
+        run: |
+          APP_NAME="ca-gateway-awcs-${{ steps.config.outputs.unique-token }}"
+          RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+          
+          echo "🛡️ Deploying API Gateway: $APP_NAME"
+          
+          # Update the Container App with the new image and configuration
+          az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RG_NAME" \
+            --image "${{ steps.promote.outputs.api-gateway-image-tag }}" \
+            --set-env-vars \
+              API_INTERNAL_URL="https://ca-api-awcs-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.cae-name }}.azurecontainerapps.io" \
+              AZURE_CLIENT_ID="${{ steps.config.outputs.entra-client-id }}" \
+              AZURE_CLIENT_SECRET="${{ steps.config.outputs.entra-client-secret }}" \
+              AZURE_TENANT_ID="${{ steps.config.outputs.entra-tenant-id }}" \
+              JWT_SHARED_KEY="${{ steps.config.outputs.jwt-shared-key }}" \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --min-replicas 1 \
+            --max-replicas 10 \
+            --ingress external \
+            --target-port 8080 \
+            --transport http \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv
+          
+          API_GATEWAY_URL="https://$(az containerapp show --name "$APP_NAME" --resource-group "$RG_NAME" --query "properties.configuration.ingress.fqdn" --output tsv)"
+          echo "🌐 API Gateway URL: $API_GATEWAY_URL"
+          echo "✅ API Gateway deployment completed"
 
       - name: Deploy API to Container Apps
         run: |
@@ -643,12 +713,12 @@ jobs:
           APP_NAME="ca-awcs-frontend-${{ steps.config.outputs.unique-token }}"
           RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
           
-          # Get API URL for frontend environment variable
-          API_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
+          # Get API Gateway URL for frontend environment variable
+          API_GATEWAY_URL="https://ca-gateway-awcs-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
           
           echo "🚀 Deploying Frontend: $APP_NAME"
           echo "📦 Using image: ${{ steps.promote.outputs.frontend-image-tag }}"
-          echo "🔗 API URL: $API_URL"
+          echo "🔗 API Gateway URL: $API_GATEWAY_URL"
           
           # Check if container app already exists
           if az containerapp show --name $APP_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
@@ -658,7 +728,8 @@ jobs:
               --resource-group $RG_NAME \
               --image ${{ steps.promote.outputs.frontend-image-tag }} \
               --set-env-vars \
-                VITE_API_BASE_URL="$API_URL"
+                VITE_API_BASE_URL="$API_GATEWAY_URL" \
+                API_GATEWAY_URL="$API_GATEWAY_URL"
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
@@ -679,7 +750,8 @@ jobs:
               --scale-rule-type http \
               --scale-rule-metadata concurrentRequests=100 \
               --env-vars \
-                VITE_API_BASE_URL="$API_URL"
+                VITE_API_BASE_URL="$API_GATEWAY_URL" \
+                API_GATEWAY_URL="$API_GATEWAY_URL"
           fi
           
           echo "✅ Frontend deployment completed"
