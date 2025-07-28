@@ -1,5 +1,6 @@
 using AzureWebContentShare.Api.Models;
 using AzureWebContentShare.Api.Services;
+using AzureWebContentShare.Api.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AzureWebContentShare.Api.Endpoints;
@@ -16,50 +17,69 @@ public static class FileShareEndpoints
     public static void MapFileShareEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/files")
-            .WithTags("File Sharing")
+            .WithTags("File Sharing")  
             .WithOpenApi();
 
+        // File upload requires Content Owner role
         group.MapPost("/share", ShareFileAsync)
             .WithName("ShareFile")
             .WithSummary("Upload and share a file")
             .WithDescription("Upload a file and create a share code for the specified recipient")
+            .RequireAuthorization(AuthorizationPolicies.ContentOwnerOnly)
             .Accepts<ShareFileRequest>("application/json")
             .Accepts<IFormFile>("multipart/form-data")
             .Produces<ShareFileResponse>(StatusCodes.Status201Created)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
-            .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized);
+            .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized)
+            .Produces<ProblemDetails>(StatusCodes.Status403Forbidden);
 
+        // File download by share code - allow anonymous access
         group.MapGet("/download/{shareCode}", DownloadFileAsync)
             .WithName("DownloadFile")
             .WithSummary("Download a shared file")
             .WithDescription("Download a file using the share code")
+            .AllowAnonymous()
             .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
             .Produces<ProblemDetails>(StatusCodes.Status410Gone);
 
+        // File metadata by share code - allow anonymous access  
         group.MapGet("/metadata/{shareCode}", GetFileMetadataAsync)
             .WithName("GetFileMetadata")
             .WithSummary("Get file metadata by share code")
             .WithDescription("Get information about a shared file without downloading it")
+            .AllowAnonymous()
             .Produces<FileShareMetadata>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound);
 
+        // User's own shares require authentication
         group.MapGet("/my-shares", GetMySharesAsync)
             .WithName("GetMyShares")
             .WithSummary("Get user's file shares")
             .WithDescription("Get all file shares created by the authenticated user")
-            .RequireAuthorization()
+            .RequireAuthorization(AuthorizationPolicies.ContentOwnerOnly)
             .Produces<IEnumerable<FileShareMetadata>>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized);
 
+        // Delete share requires ownership or admin role
         group.MapDelete("/{shareId}", DeleteShareAsync)
             .WithName("DeleteShare")
             .WithSummary("Delete a file share")
             .WithDescription("Delete a file share (soft delete)")
-            .RequireAuthorization()
+            .RequireAuthorization(AuthorizationPolicies.ContentOwnerOnly)
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized)
+            .Produces<ProblemDetails>(StatusCodes.Status403Forbidden)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound);
+
+        // Get current user profile
+        group.MapGet("/users/me", GetCurrentUserAsync)
+            .WithName("GetCurrentUser")
+            .WithSummary("Get current user profile")
+            .WithDescription("Get the authenticated user's profile information")
+            .RequireAuthorization(AuthorizationPolicies.AuthenticatedUser)
+            .Produces<UserProfileResponse>(StatusCodes.Status200OK)
+            .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized);
     }
 
     /// <summary>
@@ -98,7 +118,7 @@ public static class FileShareEndpoints
                 return Results.Unauthorized();
             }
 
-            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            if (!userService.HasRole(currentUser, UserRole.ContentOwner))
             {
                 return Results.Forbid();
             }
@@ -201,7 +221,7 @@ public static class FileShareEndpoints
                 return Results.Unauthorized();
             }
 
-            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            if (!userService.HasRole(currentUser, UserRole.ContentOwner))
             {
                 return Results.Forbid();
             }
@@ -235,7 +255,7 @@ public static class FileShareEndpoints
                 return Results.Unauthorized();
             }
 
-            if (!userService.HasRole(currentUser, UserRole.ContentPublisher))
+            if (!userService.HasRole(currentUser, UserRole.ContentOwner))
             {
                 return Results.Forbid();
             }
@@ -257,6 +277,41 @@ public static class FileShareEndpoints
         {
             return Results.Problem(
                 title: "Failed to delete share",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// Get current user profile
+    /// </summary>
+    private static async Task<IResult> GetCurrentUserAsync(
+        IUserService userService,
+        HttpContext context)
+    {
+        try
+        {
+            var currentUser = await userService.GetCurrentUserAsync(context);
+            if (currentUser == null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var userProfile = new UserProfileResponse
+            {
+                Id = currentUser.Id,
+                Email = currentUser.Email,
+                Name = currentUser.Name,
+                Role = currentUser.Role,
+                AuthenticatedAt = currentUser.AuthenticatedAt
+            };
+
+            return Results.Ok(userProfile);
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(
+                title: "Failed to get user profile",
                 detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
         }

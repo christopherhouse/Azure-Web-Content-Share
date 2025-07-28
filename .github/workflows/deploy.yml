@@ -34,6 +34,7 @@ permissions:
   contents: read
   packages: write
   checks: write # Required for test results to be published
+  security-events: write # Required for Trivy scans
 
 env:
   API_IMAGE_NAME: azure-web-content-share-api
@@ -194,6 +195,52 @@ jobs:
           cache-to: type=gha,mode=max
           sbom: true
           provenance: true          
+
+      # Security Scanning with Trivy
+      - name: Run Trivy vulnerability scanner on API
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/Api'
+          format: 'sarif'
+          output: 'trivy-api-results.sarif'
+
+      - name: Run Trivy vulnerability scanner on Frontend  
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/Frontend'
+          format: 'sarif'
+          output: 'trivy-frontend-results.sarif'
+
+      - name: Run Trivy vulnerability scanner on Jobs
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'src/Jobs'
+          format: 'sarif'
+          output: 'trivy-jobs-results.sarif'
+
+      - name: Upload API Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-api-results.sarif'
+          category: 'trivy-api'
+
+      - name: Upload Frontend Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-frontend-results.sarif'
+          category: 'trivy-frontend'
+
+      - name: Upload Jobs Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-jobs-results.sarif'
+          category: 'trivy-jobs'
 
       - name: Publish test results
         uses: dorny/test-reporter@v1

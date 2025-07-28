@@ -11,9 +11,9 @@ public enum UserRole
     Administrator,
     
     /// <summary>
-    /// Content publisher who can upload and share content
+    /// Content owner who can upload and share content
     /// </summary>
-    ContentPublisher,
+    ContentOwner,
     
     /// <summary>
     /// Content recipient who can access shared content with a share code
