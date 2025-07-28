@@ -556,8 +556,6 @@ jobs:
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --image ${{ steps.promote.outputs.api-image-tag }} \
-              --user-assigned ${{ steps.config.outputs.uami-id }} \
-              --registry-identity ${{ steps.config.outputs.uami-id }} \
               --set-env-vars \
                 ASPNETCORE_ENVIRONMENT=Production \
                 APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
@@ -612,8 +610,6 @@ jobs:
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --image ${{ steps.promote.outputs.frontend-image-tag }} \
-              --user-assigned ${{ steps.config.outputs.uami-id }} \
-              --registry-identity ${{ steps.config.outputs.uami-id }} \
               --set-env-vars \
                 VITE_API_BASE_URL="$API_URL"
           else
