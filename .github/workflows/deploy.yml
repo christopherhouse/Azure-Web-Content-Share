@@ -257,8 +257,8 @@ jobs:
         with:
           scope: resourcegroup
           resourceGroupName: ${{ needs.determine-environment.outputs.resource-group }}
-          template: infra/bicep/main.bicep
-          parameters: infra/bicep/parameters/${{ needs.determine-environment.outputs.environment }}.bicepparam
+          template: bicep/main.bicep
+          parameters: bicep/parameters/${{ needs.determine-environment.outputs.environment }}.bicepparam
           failOnStdErr: false
           deploymentName: 'infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}'
           
@@ -267,8 +267,8 @@ jobs:
         with:
           scope: resourcegroup
           resourceGroupName: ${{ needs.determine-environment.outputs.resource-group }}
-          template: infra/bicep/main.bicep
-          parameters: infra/bicep/parameters/${{ needs.determine-environment.outputs.environment }}.bicepparam
+          template: bicep/main.bicep
+          parameters: bicep/parameters/${{ needs.determine-environment.outputs.environment }}.bicepparam
           failOnStdErr: false
           deploymentName: 'infra-${{ needs.determine-environment.outputs.environment }}-latest'
 
