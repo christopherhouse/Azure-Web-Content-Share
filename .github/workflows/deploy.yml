@@ -86,8 +86,7 @@ jobs:
     outputs:
       api-image-tag: ${{ steps.images.outputs.api-image-tag }}
       frontend-image-tag: ${{ steps.images.outputs.frontend-image-tag }}
-      container-registry: ${{ steps.registry.outputs.container-registry }}
-      container-registry-name: ${{ steps.registry.outputs.container-registry-name }}
+      jobs-image-tag: ${{ steps.images.outputs.jobs-image-tag }}
     
     steps:
       - name: Checkout repository
@@ -119,58 +118,21 @@ jobs:
           dotnet restore
           dotnet build --configuration Release --no-restore
 
-      - name: Azure login using OIDC
-        if: needs.determine-environment.outputs.push-containers == 'true'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Get container registry details
-        if: needs.determine-environment.outputs.push-containers == 'true'
-        id: registry
-        run: |
-          # Get registry details from existing deployment
-          RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
-          DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-latest"
-          
-          REGISTRY_NAME=$(az deployment group show \
-            --resource-group $RG_NAME \
-            --name $DEPLOYMENT_NAME \
-            --query 'properties.outputs.containerRegistryName.value' -o tsv 2>/dev/null || echo "")
-          REGISTRY_SERVER=$(az deployment group show \
-            --resource-group $RG_NAME \
-            --name $DEPLOYMENT_NAME \
-            --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv 2>/dev/null || echo "")
-          
-          if [ -z "$REGISTRY_NAME" ] || [ -z "$REGISTRY_SERVER" ]; then
-            echo "❌ Could not retrieve container registry details. Registry may not exist yet."
-            echo "   This is expected for initial deployments. Infrastructure will be deployed next."
-            # For initial deployments, we'll skip container operations
-            echo "skip-containers=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "container-registry=$REGISTRY_SERVER" >> $GITHUB_OUTPUT
-          echo "container-registry-name=$REGISTRY_NAME" >> $GITHUB_OUTPUT
-          echo "skip-containers=false" >> $GITHUB_OUTPUT
-
       - name: Set up Docker Buildx
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Azure Container Registry
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
-        run: |
-          az acr login --name ${{ steps.registry.outputs.container-registry-name }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate image tags
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+      - name: Generate GHCR image tags
         id: images
         run: |
           BUILD_ID="${{ github.run_number }}"
-          REGISTRY="${{ steps.registry.outputs.container-registry }}"
+          REGISTRY="ghcr.io/${{ github.repository_owner }}"
           
           API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
           FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
@@ -184,8 +146,7 @@ jobs:
           echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
           echo "🏷️ Jobs Image: ${JOBS_TAG}"
 
-      - name: Build and push API image
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+      - name: Build and push API image to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -195,8 +156,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Frontend image
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+      - name: Build and push Frontend image to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -206,8 +166,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Jobs image
-        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+      - name: Build and push Jobs image to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -225,21 +184,22 @@ jobs:
           path: src/Tests/TestResults/*.trx
           reporter: dotnet-trx
 
+      - name: Publish build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_number }}
+          path: |
+            infra/
+            src/
+          retention-days: 30
+
       - name: Build summary
         run: |
           echo "✅ Code build and test completed successfully"
-          if [ "${{ needs.determine-environment.outputs.push-containers }}" == "true" ]; then
-            if [ "${{ steps.registry.outputs.skip-containers }}" == "true" ]; then
-              echo "⏭️ Container push skipped - registry not found (expected for initial deployment)"
-            else
-              echo "📦 Container images built and pushed"
-              echo "   API: ${{ steps.images.outputs.api-image-tag }}"
-              echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
-              echo "   Jobs: ${{ steps.images.outputs.jobs-image-tag }}"
-            fi
-          else
-            echo "⏭️ Container push skipped by configuration"
-          fi
+          echo "📦 Container images built and pushed to GHCR"
+          echo "   API: ${{ steps.images.outputs.api-image-tag }}"
+          echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
+          echo "   Jobs: ${{ steps.images.outputs.jobs-image-tag }}"
 
   deploy-infrastructure:
     name: Deploy Infrastructure
@@ -260,8 +220,11 @@ jobs:
       keyvault-uri: ${{ steps.deploy.outputs.keyVaultUri }}
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_number }}
+          path: ./
         
       - name: Azure login using OIDC
         uses: azure/login@v2
@@ -280,7 +243,7 @@ jobs:
             echo "Validating $module..."
             az bicep build --file "$module" --stdout > /dev/null
           done
-          
+
       - name: Deploy infrastructure
         id: deploy
         uses: azure/arm-deploy@v2
@@ -341,79 +304,11 @@ jobs:
           
           echo "✅ Cosmos DB RBAC configuration completed"
 
-  build-and-push-post-infra:
-    name: Build and Push Container Images (Post-Infrastructure)
-    runs-on: ubuntu-latest
-    needs: [determine-environment, build-and-test, deploy-infrastructure]
-    if: needs.determine-environment.outputs.push-containers == 'true' && needs.build-and-test.outputs.container-registry == ''
-    outputs:
-      api-image-tag: ${{ steps.images.outputs.api-image-tag }}
-      frontend-image-tag: ${{ steps.images.outputs.frontend-image-tag }}
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Azure login using OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Azure Container Registry
-        run: |
-          az acr login --name ${{ needs.deploy-infrastructure.outputs.container-registry-name }}
-
-      - name: Generate image tags
-        id: images
-        run: |
-          BUILD_ID="${{ github.run_number }}"
-          REGISTRY="${{ needs.deploy-infrastructure.outputs.container-registry }}"
-          
-          API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
-          FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
-          
-          echo "api-image-tag=${API_TAG}" >> $GITHUB_OUTPUT
-          echo "frontend-image-tag=${FRONTEND_TAG}" >> $GITHUB_OUTPUT
-          
-          echo "🏷️ API Image: ${API_TAG}"
-          echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
-
-      - name: Build and push API image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./src/Api/Dockerfile
-          push: true
-          tags: ${{ steps.images.outputs.api-image-tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./src/Frontend/Dockerfile
-          push: true
-          tags: ${{ steps.images.outputs.frontend-image-tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Container push summary
-        run: |
-          echo "📦 Container images built and pushed after infrastructure deployment"
-          echo "   API: ${{ steps.images.outputs.api-image-tag }}"
-          echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
-
   deploy-applications:
     name: Deploy Applications to Container Apps
     runs-on: ubuntu-latest
-    needs: [determine-environment, build-and-test, deploy-infrastructure, build-and-push-post-infra]
-    if: always() && !cancelled() && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped') && (needs.build-and-test.outputs.api-image-tag != '' || needs.build-and-push-post-infra.result == 'success')
+    needs: [determine-environment, build-and-test, deploy-infrastructure]
+    if: always() && !cancelled() && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped')
     environment: 
       name: ${{ needs.determine-environment.outputs.environment }}
     
@@ -453,16 +348,57 @@ jobs:
             echo "keyvault-uri=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.keyVaultUri.value' -o tsv)" >> $GITHUB_OUTPUT
           fi
           
-          # Determine which image tags to use
-          if [ -n "${{ needs.build-and-test.outputs.api-image-tag }}" ]; then
-            # Images were built in the initial build step
-            echo "api-image-tag=${{ needs.build-and-test.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
-            echo "frontend-image-tag=${{ needs.build-and-test.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
-          else
-            # Images were built after infrastructure deployment
-            echo "api-image-tag=${{ needs.build-and-push-post-infra.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
-            echo "frontend-image-tag=${{ needs.build-and-push-post-infra.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
-          fi
+          # Use GHCR images from build stage
+          echo "api-image-tag=${{ needs.build-and-test.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
+          echo "frontend-image-tag=${{ needs.build-and-test.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
+          echo "jobs-image-tag=${{ needs.build-and-test.outputs.jobs-image-tag }}" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ steps.config.outputs.container-registry }}
+
+      - name: Promote images from GHCR to ACR
+        id: promote
+        run: |
+          BUILD_ID="${{ github.run_number }}"
+          ACR_REGISTRY="${{ steps.config.outputs.container-registry }}"
+          
+          # Generate ACR image tags
+          ACR_API_TAG="${ACR_REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
+          ACR_FRONTEND_TAG="${ACR_REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
+          ACR_JOBS_TAG="${ACR_REGISTRY}/${{ env.JOBS_IMAGE_NAME }}:${BUILD_ID}"
+          
+          echo "🔄 Promoting images from GHCR to ACR..."
+          echo "   API: ${{ steps.config.outputs.api-image-tag }} → ${ACR_API_TAG}"
+          echo "   Frontend: ${{ steps.config.outputs.frontend-image-tag }} → ${ACR_FRONTEND_TAG}"
+          echo "   Jobs: ${{ steps.config.outputs.jobs-image-tag }} → ${ACR_JOBS_TAG}"
+          
+          # Pull from GHCR and push to ACR
+          docker pull ${{ steps.config.outputs.api-image-tag }}
+          docker tag ${{ steps.config.outputs.api-image-tag }} ${ACR_API_TAG}
+          docker push ${ACR_API_TAG}
+          
+          docker pull ${{ steps.config.outputs.frontend-image-tag }}
+          docker tag ${{ steps.config.outputs.frontend-image-tag }} ${ACR_FRONTEND_TAG}
+          docker push ${ACR_FRONTEND_TAG}
+          
+          docker pull ${{ steps.config.outputs.jobs-image-tag }}
+          docker tag ${{ steps.config.outputs.jobs-image-tag }} ${ACR_JOBS_TAG}
+          docker push ${ACR_JOBS_TAG}
+          
+          # Set ACR image tags for deployment
+          echo "api-image-tag=${ACR_API_TAG}" >> $GITHUB_OUTPUT
+          echo "frontend-image-tag=${ACR_FRONTEND_TAG}" >> $GITHUB_OUTPUT
+          echo "jobs-image-tag=${ACR_JOBS_TAG}" >> $GITHUB_OUTPUT
+          
+          echo "✅ Image promotion completed"
 
       - name: Deploy API to Container Apps
         run: |
@@ -470,7 +406,7 @@ jobs:
           RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
           
           echo "🚀 Deploying API: $APP_NAME"
-          echo "📦 Using image: ${{ steps.config.outputs.api-image-tag }}"
+          echo "📦 Using image: ${{ steps.promote.outputs.api-image-tag }}"
           
           # Check if container app already exists
           if az containerapp show --name $APP_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
@@ -478,14 +414,14 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ steps.config.outputs.api-image-tag }}
+              --image ${{ steps.promote.outputs.api-image-tag }}
           else
             echo "🆕 Creating new API Container App..."
             az containerapp create \
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --environment ${{ steps.config.outputs.container-env-name }} \
-              --image ${{ steps.config.outputs.api-image-tag }} \
+              --image ${{ steps.promote.outputs.api-image-tag }} \
               --user-assigned ${{ steps.config.outputs.uami-id }} \
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
@@ -517,7 +453,7 @@ jobs:
           API_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
           
           echo "🚀 Deploying Frontend: $APP_NAME"
-          echo "📦 Using image: ${{ steps.config.outputs.frontend-image-tag }}"
+          echo "📦 Using image: ${{ steps.promote.outputs.frontend-image-tag }}"
           echo "🔗 API URL: $API_URL"
           
           # Check if container app already exists
@@ -526,14 +462,14 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ steps.config.outputs.frontend-image-tag }}
+              --image ${{ steps.promote.outputs.frontend-image-tag }}
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
               --name $APP_NAME \
               --resource-group $RG_NAME \
               --environment ${{ steps.config.outputs.container-env-name }} \
-              --image ${{ steps.config.outputs.frontend-image-tag }} \
+              --image ${{ steps.promote.outputs.frontend-image-tag }} \
               --user-assigned ${{ steps.config.outputs.uami-id }} \
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
@@ -551,6 +487,87 @@ jobs:
           fi
           
           echo "✅ Frontend deployment completed"
+
+      - name: Deploy Cleanup Job to Container Apps
+        run: |
+          JOB_NAME="caj-awcs-cleanup-${{ steps.config.outputs.unique-token }}"
+          RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+          
+          echo "🗄️ Deploying Cleanup Job: $JOB_NAME"
+          echo "📦 Using image: ${{ steps.promote.outputs.jobs-image-tag }}"
+          
+          # Check if container apps job already exists
+          if az containerapp job show --name $JOB_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
+            echo "📝 Updating existing Cleanup Job..."
+            az containerapp job update \
+              --name $JOB_NAME \
+              --resource-group $RG_NAME \
+              --image ${{ steps.promote.outputs.jobs-image-tag }}
+          else
+            echo "🆕 Creating new Cleanup Job..."
+            az containerapp job create \
+              --name $JOB_NAME \
+              --resource-group $RG_NAME \
+              --environment ${{ steps.config.outputs.container-env-name }} \
+              --trigger-type Schedule \
+              --cron-expression "0 */2 * * *" \
+              --replica-timeout 300 \
+              --replica-retry-limit 3 \
+              --replica-completion-count 1 \
+              --parallelism 1 \
+              --image ${{ steps.promote.outputs.jobs-image-tag }} \
+              --registry-server ${{ steps.config.outputs.container-registry }} \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --env-vars \
+                DOTNET_ENVIRONMENT=Production \
+                APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
+                AzureOptions__Storage__BlobEndpoint="${{ steps.config.outputs.storage-endpoint }}" \
+                AzureOptions__CosmosDb__Endpoint="${{ steps.config.outputs.cosmos-endpoint }}" \
+                AzureOptions__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}"
+            
+            # Get the job's system-assigned managed identity principal ID
+            echo "🔐 Configuring RBAC for Cleanup Job..."
+            JOB_PRINCIPAL_ID=$(az containerapp job show --name $JOB_NAME --resource-group $RG_NAME --query 'identity.principalId' -o tsv)
+            
+            if [ -n "$JOB_PRINCIPAL_ID" ]; then
+              echo "📋 Job Principal ID: $JOB_PRINCIPAL_ID"
+              
+              # Get resource group ID for scoping
+              RG_ID=$(az group show --name "$RG_NAME" --query 'id' -o tsv)
+              
+              # Assign required roles to the job's managed identity
+              echo "🔐 Assigning AcrPull role to Cleanup Job..."
+              az role assignment create \
+                --assignee "$JOB_PRINCIPAL_ID" \
+                --role "7f951dda-4ed3-4680-a7ca-43fe172d538d" \
+                --scope "$RG_ID" || true
+              
+              echo "🗄️ Assigning Storage Blob Data Contributor role to Cleanup Job..."
+              az role assignment create \
+                --assignee "$JOB_PRINCIPAL_ID" \
+                --role "ba92f5b4-2d11-453d-a403-e96b0029c9fe" \
+                --scope "$RG_ID" || true
+              
+              echo "🗄️ Assigning Cosmos DB Built-in Data Contributor role to Cleanup Job..."
+              az role assignment create \
+                --assignee "$JOB_PRINCIPAL_ID" \
+                --role "00000000-0000-0000-0000-000000000002" \
+                --scope "$RG_ID" || true
+              
+              echo "🔐 Assigning Key Vault Secrets User role to Cleanup Job..."
+              az role assignment create \
+                --assignee "$JOB_PRINCIPAL_ID" \
+                --role "4633458b-17de-408a-b874-0445c86b69e6" \
+                --scope "$RG_ID" || true
+              
+              echo "✅ Cleanup Job RBAC configuration completed"
+            else
+              echo "⚠️ Could not get job principal ID - RBAC configuration skipped"
+            fi
+          fi
+          
+          echo "✅ Cleanup Job deployment completed"
 
       - name: Get application URLs
         id: urls
