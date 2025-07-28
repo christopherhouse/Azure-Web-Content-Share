@@ -13,10 +13,7 @@ RUN npm run build
 # Production stage with nginx
 FROM nginx:1.25-alpine AS production
 
-# Create non-root user
-RUN addgroup -g 1001 -S nginx && \
-    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
-
+# The nginx Alpine image already has nginx user/group, so we just need to configure permissions
 # Copy built application
 COPY --from=build /app/dist /usr/share/nginx/html
 
@@ -24,8 +21,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY src/Frontend/nginx.conf /etc/nginx/nginx.conf
 
 # Create required directories and set permissions
-RUN mkdir -p /var/cache/nginx /var/log/nginx /var/run && \
-    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run /usr/share/nginx/html && \
+RUN mkdir -p /var/cache/nginx /var/log/nginx && \
+    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html
 
 # Switch to non-root user
