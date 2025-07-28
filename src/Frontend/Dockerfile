@@ -21,8 +21,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY src/Frontend/nginx.conf /etc/nginx/nginx.conf
 
 # Create required directories and set permissions
-RUN mkdir -p /var/cache/nginx /var/log/nginx /var/run && \
-    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run /usr/share/nginx/html && \
+RUN mkdir -p /var/cache/nginx /var/log/nginx && \
+    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html
 
 # Switch to non-root user
