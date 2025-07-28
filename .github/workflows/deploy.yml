@@ -447,7 +447,15 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ steps.promote.outputs.api-image-tag }}
+              --image ${{ steps.promote.outputs.api-image-tag }} \
+              --user-assigned ${{ steps.config.outputs.uami-id }} \
+              --registry-identity ${{ steps.config.outputs.uami-id }} \
+              --set-env-vars \
+                ASPNETCORE_ENVIRONMENT=Production \
+                APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
+                Azure__Storage__BlobEndpoint="${{ steps.config.outputs.storage-endpoint }}" \
+                Azure__CosmosDb__Endpoint="${{ steps.config.outputs.cosmos-endpoint }}" \
+                Azure__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}"
           else
             echo "🆕 Creating new API Container App..."
             az containerapp create \
@@ -495,7 +503,11 @@ jobs:
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RG_NAME \
-              --image ${{ steps.promote.outputs.frontend-image-tag }}
+              --image ${{ steps.promote.outputs.frontend-image-tag }} \
+              --user-assigned ${{ steps.config.outputs.uami-id }} \
+              --registry-identity ${{ steps.config.outputs.uami-id }} \
+              --set-env-vars \
+                VITE_API_BASE_URL="$API_URL"
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
