@@ -12,9 +12,6 @@ param environmentSuffix string = 'dev'
 @description('The GitHub Actions build/run ID for unique deployment naming')
 param buildUniqueId string = newGuid()
 
-@description('The object ID of the GitHub Actions Service Principal that needs AcrPush permissions')
-param githubActionsServicePrincipalObjectId string
-
 @description('Tags to apply to all resources')
 param tags object = {
   Application: 'Azure Web Content Share'
@@ -157,11 +154,6 @@ resource containerRegistryPullRoleDefinition 'Microsoft.Authorization/roleDefini
   name: '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull role
 }
 
-resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '8311e382-0749-4cb8-b61a-304f252e45ec' // AcrPush role
-}
-
 resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
@@ -180,16 +172,6 @@ resource uamiAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
     roleDefinitionId: containerRegistryPullRoleDefinition.id
     principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
     principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Container Registry push access to GitHub Actions Service Principal
-resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistryName, 'github-actions', containerRegistryPushRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: containerRegistryPushRoleDefinition.id
-    principalId: githubActionsServicePrincipalObjectId
   }
 }
 
