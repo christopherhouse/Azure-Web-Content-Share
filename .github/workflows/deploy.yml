@@ -168,6 +168,8 @@ jobs:
           tags: ${{ steps.images.outputs.api-image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
 
       - name: Build and push Frontend image to GHCR
         uses: docker/build-push-action@v5
@@ -178,6 +180,8 @@ jobs:
           tags: ${{ steps.images.outputs.frontend-image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true          
 
       - name: Build and push Jobs image to GHCR
         uses: docker/build-push-action@v5
@@ -188,6 +192,8 @@ jobs:
           tags: ${{ steps.images.outputs.jobs-image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true          
 
       - name: Publish test results
         uses: dorny/test-reporter@v1
@@ -358,28 +364,76 @@ jobs:
         run: |
           if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
             # Use outputs from infrastructure deployment
-            echo "unique-token=${{ needs.deploy-infrastructure.outputs.unique-token }}" >> $GITHUB_OUTPUT
-            echo "container-env-name=${{ needs.deploy-infrastructure.outputs.container-env-name }}" >> $GITHUB_OUTPUT
-            echo "uami-id=${{ needs.deploy-infrastructure.outputs.uami-id }}" >> $GITHUB_OUTPUT
-            echo "container-registry=${{ needs.deploy-infrastructure.outputs.container-registry }}" >> $GITHUB_OUTPUT
-            echo "app-insights-conn=${{ needs.deploy-infrastructure.outputs.app-insights-conn }}" >> $GITHUB_OUTPUT
-            echo "cosmos-endpoint=${{ needs.deploy-infrastructure.outputs.cosmos-endpoint }}" >> $GITHUB_OUTPUT
-            echo "storage-endpoint=${{ needs.deploy-infrastructure.outputs.storage-endpoint }}" >> $GITHUB_OUTPUT
-            echo "keyvault-uri=${{ needs.deploy-infrastructure.outputs.keyvault-uri }}" >> $GITHUB_OUTPUT
+            UNIQUE_TOKEN="${{ needs.deploy-infrastructure.outputs.unique-token }}"
+            CONTAINER_ENV_NAME="${{ needs.deploy-infrastructure.outputs.container-env-name }}"
+            UAMI_ID="${{ needs.deploy-infrastructure.outputs.uami-id }}"
+            CONTAINER_REGISTRY="${{ needs.deploy-infrastructure.outputs.container-registry }}"
+            APP_INSIGHTS_CONN="${{ needs.deploy-infrastructure.outputs.app-insights-conn }}"
+            COSMOS_ENDPOINT="${{ needs.deploy-infrastructure.outputs.cosmos-endpoint }}"
+            STORAGE_ENDPOINT="${{ needs.deploy-infrastructure.outputs.storage-endpoint }}"
+            KEYVAULT_URI="${{ needs.deploy-infrastructure.outputs.keyvault-uri }}"
           else
             # Get from existing deployment (skip infra mode)
             DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-latest"
             RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
             
-            echo "unique-token=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.uniqueResourceToken.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "container-env-name=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "uami-id=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "container-registry=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "app-insights-conn=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.applicationInsightsConnectionString.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "cosmos-endpoint=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.cosmosDbEndpoint.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "storage-endpoint=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.storageAccountBlobEndpoint.value' -o tsv)" >> $GITHUB_OUTPUT
-            echo "keyvault-uri=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.keyVaultUri.value' -o tsv)" >> $GITHUB_OUTPUT
+            # Verify deployment exists
+            if ! az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME > /dev/null 2>&1; then
+              echo "❌ ERROR: Deployment '$DEPLOYMENT_NAME' not found in resource group '$RG_NAME'"
+              echo "💡 Either run with infrastructure deployment enabled or ensure infrastructure has been deployed previously"
+              exit 1
+            fi
+            
+            echo "📋 Getting configuration from existing deployment: $DEPLOYMENT_NAME"
+            
+            UNIQUE_TOKEN=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+            CONTAINER_ENV_NAME=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+            UAMI_ID=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+            CONTAINER_REGISTRY=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+            APP_INSIGHTS_CONN=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.applicationInsightsConnectionString.value' -o tsv)
+            COSMOS_ENDPOINT=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.cosmosDbEndpoint.value' -o tsv)
+            STORAGE_ENDPOINT=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.storageAccountBlobEndpoint.value' -o tsv)
+            KEYVAULT_URI=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.keyVaultUri.value' -o tsv)
           fi
+          
+          # Validate critical configuration values
+          if [ -z "$UNIQUE_TOKEN" ] || [ "$UNIQUE_TOKEN" = "null" ]; then
+            echo "❌ ERROR: unique-token is empty or null"
+            exit 1
+          fi
+          
+          if [ -z "$CONTAINER_ENV_NAME" ] || [ "$CONTAINER_ENV_NAME" = "null" ]; then
+            echo "❌ ERROR: container-env-name is empty or null"
+            exit 1
+          fi
+          
+          if [ -z "$UAMI_ID" ] || [ "$UAMI_ID" = "null" ]; then
+            echo "❌ ERROR: uami-id is empty or null"
+            echo "💡 This usually means the User Assigned Managed Identity was not properly deployed"
+            exit 1
+          fi
+          
+          if [ -z "$CONTAINER_REGISTRY" ] || [ "$CONTAINER_REGISTRY" = "null" ]; then
+            echo "❌ ERROR: container-registry is empty or null"
+            exit 1
+          fi
+          
+          # Set outputs
+          echo "unique-token=$UNIQUE_TOKEN" >> $GITHUB_OUTPUT
+          echo "container-env-name=$CONTAINER_ENV_NAME" >> $GITHUB_OUTPUT
+          echo "uami-id=$UAMI_ID" >> $GITHUB_OUTPUT
+          echo "container-registry=$CONTAINER_REGISTRY" >> $GITHUB_OUTPUT
+          echo "app-insights-conn=$APP_INSIGHTS_CONN" >> $GITHUB_OUTPUT
+          echo "cosmos-endpoint=$COSMOS_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "storage-endpoint=$STORAGE_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "keyvault-uri=$KEYVAULT_URI" >> $GITHUB_OUTPUT
+          
+          # Debug output
+          echo "🔧 Configuration values:"
+          echo "   Unique Token: $UNIQUE_TOKEN"
+          echo "   Container Environment: $CONTAINER_ENV_NAME"
+          echo "   User Assigned Managed Identity: $UAMI_ID"
+          echo "   Container Registry: $CONTAINER_REGISTRY"
           
           # Use GHCR images from build stage
           echo "api-image-tag=${{ needs.build-and-test.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
