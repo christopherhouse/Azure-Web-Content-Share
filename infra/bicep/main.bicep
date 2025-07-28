@@ -228,6 +228,9 @@ output applicationInsightsConnectionString string = appInsights.outputs.connecti
 @description('The Cosmos DB endpoint')
 output cosmosDbEndpoint string = cosmosDb.outputs.cosmosDbEndpoint
 
+@description('The Cosmos DB account name')
+output cosmosDbAccountName string = cosmosDb.outputs.cosmosDbAccountName
+
 @description('The Storage Account blob endpoint')
 output storageAccountBlobEndpoint string = storageAccount.outputs.blobEndpoint
 

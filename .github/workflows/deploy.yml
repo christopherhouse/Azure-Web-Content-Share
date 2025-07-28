@@ -292,17 +292,30 @@ jobs:
           
           echo "📋 UAMI Principal ID: $UAMI_PRINCIPAL_ID"
           
-          # Get resource group ID for scoping
-          RG_ID=$(az group show \
-            --name "${{ needs.determine-environment.outputs.resource-group }}" \
-            --query 'id' -o tsv)
+          # Get Cosmos DB account name from deployment outputs
+          COSMOS_ACCOUNT_NAME=$(az deployment group show \
+            --resource-group "${{ needs.determine-environment.outputs.resource-group }}" \
+            --name "infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}" \
+            --query 'properties.outputs.cosmosDbAccountName.value' -o tsv)
+          
+          if [ -z "$COSMOS_ACCOUNT_NAME" ]; then
+            echo "❌ Failed to get Cosmos DB account name"
+            exit 1
+          fi
+          
+          echo "🗄️ Cosmos DB Account: $COSMOS_ACCOUNT_NAME"
+          
+          # Create scope for the Cosmos DB account
+          COSMOS_SCOPE="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ needs.determine-environment.outputs.resource-group }}/providers/Microsoft.DocumentDB/databaseAccounts/${COSMOS_ACCOUNT_NAME}"
           
           # Assign Cosmos DB Built-in Data Contributor role to UAMI
           echo "🗄️ Assigning Cosmos DB Built-in Data Contributor role to UAMI..."
-          az role assignment create \
-            --assignee "$UAMI_PRINCIPAL_ID" \
-            --role "00000000-0000-0000-0000-000000000002" \
-            --scope "$RG_ID"
+          az cosmosdb sql role assignment create \
+            --resource-group "${{ needs.determine-environment.outputs.resource-group }}" \
+            --account-name "$COSMOS_ACCOUNT_NAME" \
+            --role-definition-id "00000000-0000-0000-0000-000000000002" \
+            --principal-id "$UAMI_PRINCIPAL_ID" \
+            --scope "$COSMOS_SCOPE"
           
           echo "✅ Cosmos DB RBAC configuration completed"
 
