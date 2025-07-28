@@ -92,6 +92,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate Bicep templates
+        run: |
+          echo "💪 Validating main.bicep template..."
+          az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+          
+          echo "🔍 Validating individual modules..."
+          for module in infra/bicep/modules/*/main.bicep; do
+            echo "  💪 Validating $module..."
+            az bicep build --file "$module" --stdout > /dev/null
+          done
+          
+          echo "✅ All Bicep templates validated successfully!"        
+
       - name: Build and test API
         run: |
           echo "🔨 Building API..."
@@ -232,17 +245,6 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          
-      - name: Validate Bicep templates
-        run: |
-          echo "Validating main.bicep template..."
-          az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
-          
-          echo "Validating individual modules..."
-          for module in infra/bicep/modules/*/main.bicep; do
-            echo "Validating $module..."
-            az bicep build --file "$module" --stdout > /dev/null
-          done
 
       - name: Deploy infrastructure
         id: deploy

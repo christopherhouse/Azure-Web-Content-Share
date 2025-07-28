@@ -10,7 +10,7 @@ param appName string = 'awcs'
 param environmentSuffix string = 'dev'
 
 @description('The GitHub Actions build/run ID for unique deployment naming')
-param buildId string = newGuid()
+param buildUniqueId string = newGuid()
 
 @description('The object ID of the GitHub Actions Service Principal that needs AcrPush permissions')
 param githubActionsServicePrincipalObjectId string
@@ -24,6 +24,9 @@ param tags object = {
 
 // Generate unique resource token using resource group name as salt
 var uniqueResourceToken = take(uniqueString(resourceGroup().id, appName), 8)
+
+// Generate sanitized build ID from the unique build identifier
+var buildId = uniqueString(buildUniqueId)
 
 // Resource names following naming conventions
 var logAnalyticsWorkspaceName = 'log-${appName}-${uniqueResourceToken}'
@@ -187,7 +190,6 @@ resource githubActionsAcrPushAssignment 'Microsoft.Authorization/roleAssignments
   properties: {
     roleDefinitionId: containerRegistryPushRoleDefinition.id
     principalId: githubActionsServicePrincipalObjectId
-    principalType: 'ServicePrincipal'
   }
 }
 
