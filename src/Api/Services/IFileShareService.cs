@@ -38,6 +38,12 @@ public interface IFileShareService
     Task<IEnumerable<FileShareMetadata>> GetUserSharesAsync(string userId);
     
     /// <summary>
+    /// Get all shares in the system (Administrator only)
+    /// </summary>
+    /// <returns>List of all file share metadata</returns>
+    Task<IEnumerable<FileShareMetadata>> GetAllSharesAsync();
+    
+    /// <summary>
     /// Delete a share (mark as deleted)
     /// </summary>
     /// <param name="shareId">Share ID</param>

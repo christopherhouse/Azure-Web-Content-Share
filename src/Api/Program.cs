@@ -211,6 +211,7 @@ app.UseAuthorization();
 
 // Map endpoints
 app.MapFileShareEndpoints();
+app.MapUserManagementEndpoints();
 app.MapHealthEndpoints();
 
 // Map health checks (allow anonymous access)

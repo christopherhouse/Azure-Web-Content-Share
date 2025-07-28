@@ -180,6 +180,33 @@ public class FileShareService : IFileShareService
     }
 
     /// <inheritdoc/>
+    public async Task<IEnumerable<FileShareMetadata>> GetAllSharesAsync()
+    {
+        try
+        {
+            var container = await GetCosmosContainerAsync();
+            var query = new QueryDefinition(
+                "SELECT * FROM c WHERE c.isDeleted = false ORDER BY c.createdAt DESC");
+
+            var iterator = container.GetItemQueryIterator<FileShareMetadata>(query);
+            var results = new List<FileShareMetadata>();
+
+            while (iterator.HasMoreResults)
+            {
+                var response = await iterator.ReadNextAsync();
+                results.AddRange(response);
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get all shares");
+            return Enumerable.Empty<FileShareMetadata>();
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<bool> DeleteShareAsync(string shareId, string userId)
     {
         try

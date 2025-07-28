@@ -93,3 +93,14 @@ public class UserProfileResponse
     /// </summary>
     public DateTime AuthenticatedAt { get; set; }
 }
+
+/// <summary>
+/// Request model for updating user role
+/// </summary>
+public class UpdateUserRoleRequest
+{
+    /// <summary>
+    /// New role for the user
+    /// </summary>
+    public UserRole Role { get; set; }
+}

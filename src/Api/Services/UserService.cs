@@ -46,6 +46,25 @@ public interface IUserService
     /// <param name="userId">User ID</param>
     /// <returns>User or null if not found</returns>
     Task<CurrentUser?> GetUserByIdAsync(string userId);
+    
+    /// <summary>
+    /// Get all users (Administrator only)
+    /// </summary>
+    /// <returns>List of all users</returns>
+    Task<IEnumerable<CurrentUser>> GetAllUsersAsync();
+    
+    /// <summary>
+    /// Delete user (soft delete)
+    /// </summary>
+    /// <param name="userId">User ID to delete</param>
+    /// <returns>True if user was deleted</returns>
+    Task<bool> DeleteUserAsync(string userId);
+    
+    /// <summary>
+    /// Get count of administrators in the system
+    /// </summary>
+    /// <returns>Number of administrators</returns>
+    Task<int> GetAdministratorCountAsync();
 }
 
 /// <summary>
@@ -194,6 +213,92 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get user by ID {UserId}", userId);
+            throw;
+        }
+    }
+    
+    /// <inheritdoc/>
+    public async Task<IEnumerable<CurrentUser>> GetAllUsersAsync()
+    {
+        try
+        {
+            var query = _usersContainer.GetItemQueryIterator<CurrentUser>(
+                "SELECT * FROM c WHERE c.IsDeleted != true OR NOT IS_DEFINED(c.IsDeleted)"
+            );
+            
+            var results = new List<CurrentUser>();
+            while (query.HasMoreResults)
+            {
+                var response = await query.ReadNextAsync();
+                results.AddRange(response);
+            }
+            
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get all users");
+            throw;
+        }
+    }
+    
+    /// <inheritdoc/>
+    public async Task<bool> DeleteUserAsync(string userId)
+    {
+        try
+        {
+            var user = await GetUserByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+
+            // Soft delete by setting IsDeleted flag
+            var deleteData = new
+            {
+                id = userId,
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow
+            };
+
+            await _usersContainer.PatchItemAsync<object>(
+                userId,
+                new Microsoft.Azure.Cosmos.PartitionKey(userId),
+                new[]
+                {
+                    Microsoft.Azure.Cosmos.PatchOperation.Set("/IsDeleted", true),
+                    Microsoft.Azure.Cosmos.PatchOperation.Set("/DeletedAt", DateTime.UtcNow)
+                }
+            );
+
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete user {UserId}", userId);
+            throw;
+        }
+    }
+    
+    /// <inheritdoc/>
+    public async Task<int> GetAdministratorCountAsync()
+    {
+        try
+        {
+            var query = _usersContainer.GetItemQueryIterator<int>(
+                "SELECT VALUE COUNT(1) FROM c WHERE c.Role = 'Administrator' AND (c.IsDeleted != true OR NOT IS_DEFINED(c.IsDeleted))"
+            );
+            
+            var response = await query.ReadNextAsync();
+            return response.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get administrator count");
             throw;
         }
     }

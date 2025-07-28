@@ -39,7 +39,246 @@ This solution implements a complete cloud-native file sharing platform with thre
 - **Complete CI/CD pipeline** with GitHub Actions for automated deployments
 - **RBAC role assignments** for secure service-to-service communication
 
-## 🚀 Quick Start
+## 🔒 Entra ID Authentication Setup
+
+This application uses Microsoft Entra ID (Azure Active Directory) for authentication and authorization. Follow these detailed steps to configure authentication for both the API and frontend.
+
+### Prerequisites
+
+- Azure subscription with appropriate permissions
+- Azure CLI installed and authenticated
+- Administrator access to an Azure AD tenant
+
+### Step 1: Create API App Registration
+
+1. **Navigate to Azure Portal**
+   - Go to [Azure Portal](https://portal.azure.com)
+   - Navigate to **Microsoft Entra ID** > **App registrations**
+
+2. **Create New Registration**
+   - Click **"New registration"**
+   - **Name**: `Azure Web Content Share API`
+   - **Supported account types**: `Accounts in this organizational directory only`
+   - **Redirect URI**: Leave blank for now
+   - Click **"Register"**
+
+3. **Configure API App**
+   - Note the **Application (client) ID** and **Directory (tenant) ID**
+   - Go to **"Expose an API"**
+   - Click **"Add a scope"**
+   - **Application ID URI**: Use default (api://[client-id])
+   - **Scope name**: `access_as_user`
+   - **Who can consent**: `Admins and users`
+   - **Admin consent display name**: `Access Azure Web Content Share API`
+   - **Admin consent description**: `Allow the application to access the API on the signed-in user's behalf`
+   - **User consent display name**: `Access Azure Web Content Share API`
+   - **User consent description**: `Allow the application to access the API on your behalf`
+   - **State**: `Enabled`
+   - Click **"Add scope"**
+
+4. **Create Client Secret** (for development/testing)
+   - Go to **"Certificates & secrets"**
+   - Click **"New client secret"**
+   - **Description**: `Dev/Test Secret`
+   - **Expires**: `6 months` (adjust as needed)
+   - Click **"Add"**
+   - **Important**: Copy the secret value immediately - you won't see it again!
+
+### Step 2: Create Frontend App Registration
+
+1. **Create New Registration**
+   - Click **"New registration"**
+   - **Name**: `Azure Web Content Share Frontend`
+   - **Supported account types**: `Accounts in this organizational directory only`
+   - **Redirect URI**: 
+     - **Platform**: `Single-page application (SPA)`
+     - **URI**: `http://localhost:5173` (for local development)
+   - Click **"Register"**
+
+2. **Configure Frontend App**
+   - Note the **Application (client) ID**
+   - Go to **"Authentication"**
+   - Under **"Single-page application"** section, add additional redirect URIs:
+     - `https://your-frontend-domain.com` (production URL)
+     - `https://your-frontend-staging.com` (staging URL)
+   - **Logout URL**: Add your logout URLs if needed
+   - Under **"Implicit grant and hybrid flows"**:
+     - ✅ **Access tokens** (used for implicit flows)
+     - ✅ **ID tokens** (used for implicit and hybrid flows)
+
+3. **Configure API Permissions**
+   - Go to **"API permissions"**
+   - Click **"Add a permission"**
+   - Click **"My APIs"**
+   - Select **"Azure Web Content Share API"**
+   - Select **"Delegated permissions"**
+   - Check **"access_as_user"**
+   - Click **"Add permissions"**
+   - Click **"Grant admin consent for [your tenant]"** (if you have admin rights)
+
+### Step 3: Configure Application Settings
+
+#### API Configuration (appsettings.json)
+
+```json
+{
+  "EntraId": {
+    "TenantId": "your-tenant-id-here",
+    "ClientId": "your-api-client-id-here",
+    "ClientSecret": "your-api-client-secret-here",
+    "FrontendClientId": "your-frontend-client-id-here",
+    "FrontendRedirectUri": "https://your-frontend-domain.com"
+  },
+  "CORS": {
+    "AllowedOrigins": [
+      "http://localhost:5173",
+      "https://your-frontend-domain.com"
+    ]
+  }
+}
+```
+
+#### Frontend Configuration (.env.local)
+
+Copy `.env.example` to `.env.local` and update:
+
+```bash
+# Azure Entra ID Configuration
+VITE_AZURE_CLIENT_ID=your-frontend-client-id-here
+VITE_AZURE_TENANT_ID=your-tenant-id-here
+
+# API Configuration
+VITE_API_CLIENT_ID=your-api-client-id-here
+VITE_API_BASE_URL=https://your-api-domain.com
+
+# Development settings
+VITE_API_BASE_URL_DEV=http://localhost:5000
+```
+
+### Step 4: Azure Infrastructure Configuration
+
+Update your Bicep parameter files with the authentication configuration:
+
+#### infra/bicep/parameters/dev.bicepparam
+
+```bicep
+param entraIdTenantId = 'your-tenant-id-here'
+param entraIdApiClientId = 'your-api-client-id-here'
+param entraIdFrontendClientId = 'your-frontend-client-id-here'
+```
+
+### Step 5: Create First Administrator User
+
+The application requires at least one administrator user. Follow these steps after deployment:
+
+1. **Deploy the application** with the configuration above
+2. **Sign in to the frontend** with your Azure AD account
+3. **Contact your system administrator** to promote your account to Administrator role via database update:
+
+```sql
+-- Connect to your Cosmos DB and update the user document
+UPDATE c 
+SET c.Role = "Administrator" 
+WHERE c.id = "your-user-object-id"
+```
+
+Alternatively, use the Azure Portal Cosmos DB Data Explorer to manually update the user document.
+
+### Step 6: User Role Management
+
+Once you have an administrator account set up, you can manage users through the admin interface:
+
+#### Role Hierarchy
+- 🛡️ **Administrator**: Full system access, user management, view all content
+- 📤 **ContentOwner**: Can upload, share, and manage their own files
+- 📥 **ContentRecipient**: Can only access shared files via share codes
+
+#### Managing Users via API
+
+**Get all users:**
+```bash
+GET /api/admin/users
+Authorization: Bearer {your-jwt-token}
+```
+
+**Update user role:**
+```bash
+PUT /api/admin/users/{userId}/role
+Authorization: Bearer {your-jwt-token}
+Content-Type: application/json
+
+{
+  "role": "Administrator"
+}
+```
+
+**Delete user:**
+```bash
+DELETE /api/admin/users/{userId}
+Authorization: Bearer {your-jwt-token}
+```
+
+### Step 7: Testing Authentication
+
+#### Frontend Testing
+1. Navigate to your frontend URL
+2. Click **"Sign In with Microsoft"**
+3. Complete the OAuth flow
+4. Verify you can see the authenticated dashboard
+
+#### API Testing
+1. Get an access token from the frontend (check browser dev tools)
+2. Test API endpoints with the token:
+
+```bash
+curl -X GET "https://your-api-domain.com/api/files/users/me" \
+  -H "Authorization: Bearer {your-access-token}"
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+**"AADSTS50011: The reply URL specified in the request does not match the reply URLs configured"**
+- Ensure redirect URIs are correctly configured in the frontend app registration
+- Check that URLs match exactly (including http/https, trailing slashes)
+
+**"AADSTS65001: The user or administrator has not consented to use the application"**
+- Grant admin consent for the API permissions in the frontend app registration
+- Or have users consent individually when they first sign in
+
+**"401 Unauthorized" on API calls**
+- Verify the API app registration scope configuration
+- Check that the frontend is requesting the correct scope (`api://[api-client-id]/access_as_user`)
+- Ensure JWT token validation is correctly configured in the API
+
+**"No users can sign in" (ContentRecipient role)**
+- Users are automatically created with ContentOwner role on first sign-in
+- ContentRecipient role is intended for future use with guest access
+
+#### Debugging Tips
+
+1. **Enable detailed logging** in both API and frontend for authentication events
+2. **Use browser dev tools** to inspect network requests and JWT tokens
+3. **Check JWT token contents** at [jwt.ms](https://jwt.ms) to verify claims
+4. **Review Azure AD sign-in logs** in the Azure Portal for authentication issues
+
+### Security Best Practices
+
+- 📋 **Use certificates instead of client secrets** in production
+- 🔄 **Rotate secrets/certificates regularly**
+- 🔒 **Implement Conditional Access policies** for additional security
+- 📊 **Monitor sign-in logs** for suspicious activity
+- 🛡️ **Use separate app registrations** for different environments
+- 🚫 **Never commit secrets** to source control
+
+### Production Considerations
+
+- **Certificate-based authentication**: Replace client secrets with certificates
+- **Key Vault integration**: Store secrets in Azure Key Vault
+- **Managed Identity**: Use managed identity for API-to-Azure service authentication
+- **Custom domains**: Configure custom domains for both API and frontend
+- **SSL/TLS**: Ensure HTTPS everywhere with proper certificates
 
 ### Prerequisites
 - **Azure CLI** (latest version) installed and configured
