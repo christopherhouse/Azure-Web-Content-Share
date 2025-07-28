@@ -287,6 +287,36 @@ jobs:
           echo "📦 Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
           echo "🔐 User Managed Identity: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"
 
+      - name: Configure Cosmos DB RBAC for User Assigned Managed Identity
+        run: |
+          echo "🗄️ Configuring Cosmos DB RBAC for User Assigned Managed Identity..."
+          
+          # Get the User Assigned Managed Identity principal ID
+          UAMI_PRINCIPAL_ID=$(az identity show \
+            --ids "${{ steps.deploy.outputs.userAssignedManagedIdentityId }}" \
+            --query 'principalId' -o tsv)
+          
+          if [ -z "$UAMI_PRINCIPAL_ID" ]; then
+            echo "❌ Failed to get User Assigned Managed Identity principal ID"
+            exit 1
+          fi
+          
+          echo "📋 UAMI Principal ID: $UAMI_PRINCIPAL_ID"
+          
+          # Get resource group ID for scoping
+          RG_ID=$(az group show \
+            --name "${{ needs.determine-environment.outputs.resource-group }}" \
+            --query 'id' -o tsv)
+          
+          # Assign Cosmos DB Built-in Data Contributor role to UAMI
+          echo "🗄️ Assigning Cosmos DB Built-in Data Contributor role to UAMI..."
+          az role assignment create \
+            --assignee "$UAMI_PRINCIPAL_ID" \
+            --role "00000000-0000-0000-0000-000000000002" \
+            --scope "$RG_ID"
+          
+          echo "✅ Cosmos DB RBAC configuration completed"
+
   build-and-push-post-infra:
     name: Build and Push Container Images (Post-Infrastructure)
     runs-on: ubuntu-latest

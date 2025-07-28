@@ -231,17 +231,6 @@ resource uamiStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
-// Grant Cosmos DB Data Contributor access to UAMI (for Container Apps)
-resource uamiCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(cosmosDbAccountName, userAssignedManagedIdentityName, cosmosDbDataContributorRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: cosmosDbDataContributorRoleDefinition.id
-    principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 // Grant Key Vault Secrets User access to UAMI (for Container Apps)
 resource uamiKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVaultName, userAssignedManagedIdentityName, keyVaultSecretsUserRoleDefinition.id)
