@@ -280,6 +280,17 @@ jobs:
           echo "🔧 Container Apps Environment: ${{ steps.deploy.outputs.containerAppsEnvironmentName }}"
           echo "📦 Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
           echo "🔐 User Managed Identity: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"
+          
+          echo ""
+          echo "🔍 DEBUG: All deployment outputs:"
+          echo "   uniqueResourceToken: ${{ steps.deploy.outputs.uniqueResourceToken }}"
+          echo "   containerAppsEnvironmentName: ${{ steps.deploy.outputs.containerAppsEnvironmentName }}"
+          echo "   userAssignedManagedIdentityId: ${{ steps.deploy.outputs.userAssignedManagedIdentityId }}"
+          echo "   containerRegistryLoginServer: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
+          echo "   applicationInsightsConnectionString: ${{ steps.deploy.outputs.applicationInsightsConnectionString }}"
+          echo "   cosmosDbEndpoint: ${{ steps.deploy.outputs.cosmosDbEndpoint }}"
+          echo "   storageAccountBlobEndpoint: ${{ steps.deploy.outputs.storageAccountBlobEndpoint }}"
+          echo "   keyVaultUri: ${{ steps.deploy.outputs.keyVaultUri }}"
 
       - name: Configure Cosmos DB RBAC for User Assigned Managed Identity
         run: |
@@ -363,6 +374,7 @@ jobs:
         run: |
           if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
             # Use outputs from infrastructure deployment
+            echo "📋 Using outputs from infrastructure deployment job"
             UNIQUE_TOKEN="${{ needs.deploy-infrastructure.outputs.unique-token }}"
             CONTAINER_ENV_NAME="${{ needs.deploy-infrastructure.outputs.container-env-name }}"
             UAMI_ID="${{ needs.deploy-infrastructure.outputs.uami-id }}"
@@ -371,6 +383,49 @@ jobs:
             COSMOS_ENDPOINT="${{ needs.deploy-infrastructure.outputs.cosmos-endpoint }}"
             STORAGE_ENDPOINT="${{ needs.deploy-infrastructure.outputs.storage-endpoint }}"
             KEYVAULT_URI="${{ needs.deploy-infrastructure.outputs.keyvault-uri }}"
+            
+            echo "🔍 DEBUG: Raw values from infrastructure job outputs:"
+            echo "   Raw unique-token: '${{ needs.deploy-infrastructure.outputs.unique-token }}'"
+            echo "   Raw container-env-name: '${{ needs.deploy-infrastructure.outputs.container-env-name }}'"  
+            echo "   Raw uami-id: '${{ needs.deploy-infrastructure.outputs.uami-id }}'"
+            echo "   Raw container-registry: '${{ needs.deploy-infrastructure.outputs.container-registry }}'"
+            
+            # If critical values are empty from job outputs, try to get them directly from deployment
+            if [ -z "$UAMI_ID" ] || [ "$UAMI_ID" = "null" ]; then
+              echo "⚠️ UAMI ID is empty from job outputs, querying deployment directly..."
+              DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}"
+              RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+              
+              UAMI_ID=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
+              echo "   Direct query UAMI ID: '$UAMI_ID'"
+            fi
+            
+            if [ -z "$UNIQUE_TOKEN" ] || [ "$UNIQUE_TOKEN" = "null" ]; then
+              echo "⚠️ Unique token is empty from job outputs, querying deployment directly..."
+              DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}"
+              RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+              
+              UNIQUE_TOKEN=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
+              echo "   Direct query unique token: '$UNIQUE_TOKEN'"
+            fi
+            
+            if [ -z "$CONTAINER_ENV_NAME" ] || [ "$CONTAINER_ENV_NAME" = "null" ]; then
+              echo "⚠️ Container env name is empty from job outputs, querying deployment directly..."
+              DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}"
+              RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+              
+              CONTAINER_ENV_NAME=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
+              echo "   Direct query container env name: '$CONTAINER_ENV_NAME'"
+            fi
+            
+            if [ -z "$CONTAINER_REGISTRY" ] || [ "$CONTAINER_REGISTRY" = "null" ]; then
+              echo "⚠️ Container registry is empty from job outputs, querying deployment directly..."
+              DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-${{ github.run_number }}"
+              RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
+              
+              CONTAINER_REGISTRY=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
+              echo "   Direct query container registry: '$CONTAINER_REGISTRY'"
+            fi
           else
             # Get from existing deployment (skip infra mode)
             DEPLOYMENT_NAME="infra-${{ needs.determine-environment.outputs.environment }}-latest"
