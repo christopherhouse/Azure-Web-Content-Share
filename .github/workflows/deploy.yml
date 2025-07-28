@@ -549,6 +549,8 @@ jobs:
               --replica-completion-count 1 \
               --parallelism 1 \
               --image ${{ steps.promote.outputs.jobs-image-tag }} \
+              --user-assigned ${{ steps.config.outputs.uami-id }} \
+              --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --cpu 0.25 \
               --memory 0.5Gi \
@@ -559,45 +561,7 @@ jobs:
                 AzureOptions__CosmosDb__Endpoint="${{ steps.config.outputs.cosmos-endpoint }}" \
                 AzureOptions__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}"
             
-            # Get the job's system-assigned managed identity principal ID
-            echo "🔐 Configuring RBAC for Cleanup Job..."
-            JOB_PRINCIPAL_ID=$(az containerapp job show --name $JOB_NAME --resource-group $RG_NAME --query 'identity.principalId' -o tsv)
-            
-            if [ -n "$JOB_PRINCIPAL_ID" ]; then
-              echo "📋 Job Principal ID: $JOB_PRINCIPAL_ID"
-              
-              # Get resource group ID for scoping
-              RG_ID=$(az group show --name "$RG_NAME" --query 'id' -o tsv)
-              
-              # Assign required roles to the job's managed identity
-              echo "🔐 Assigning AcrPull role to Cleanup Job..."
-              az role assignment create \
-                --assignee "$JOB_PRINCIPAL_ID" \
-                --role "7f951dda-4ed3-4680-a7ca-43fe172d538d" \
-                --scope "$RG_ID" || true
-              
-              echo "🗄️ Assigning Storage Blob Data Contributor role to Cleanup Job..."
-              az role assignment create \
-                --assignee "$JOB_PRINCIPAL_ID" \
-                --role "ba92f5b4-2d11-453d-a403-e96b0029c9fe" \
-                --scope "$RG_ID" || true
-              
-              echo "🗄️ Assigning Cosmos DB Built-in Data Contributor role to Cleanup Job..."
-              az role assignment create \
-                --assignee "$JOB_PRINCIPAL_ID" \
-                --role "00000000-0000-0000-0000-000000000002" \
-                --scope "$RG_ID" || true
-              
-              echo "🔐 Assigning Key Vault Secrets User role to Cleanup Job..."
-              az role assignment create \
-                --assignee "$JOB_PRINCIPAL_ID" \
-                --role "4633458b-17de-408a-b874-0445c86b69e6" \
-                --scope "$RG_ID" || true
-              
-              echo "✅ Cleanup Job RBAC configuration completed"
-            else
-              echo "⚠️ Could not get job principal ID - RBAC configuration skipped"
-            fi
+            echo "✅ Cleanup Job created with User Assigned Managed Identity"
           fi
           
           echo "✅ Cleanup Job deployment completed"
