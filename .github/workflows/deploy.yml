@@ -38,6 +38,7 @@ permissions:
 env:
   API_IMAGE_NAME: azure-web-content-share-api
   FRONTEND_IMAGE_NAME: azure-web-content-share-frontend
+  JOBS_IMAGE_NAME: azure-web-content-share-jobs
 
 jobs:
   determine-environment:
@@ -111,6 +112,13 @@ jobs:
           npm run type-check
           npm run build
 
+      - name: Build and test Jobs
+        run: |
+          echo "🔨 Building Jobs..."
+          cd src/Jobs
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+
       - name: Azure login using OIDC
         if: needs.determine-environment.outputs.push-containers == 'true'
         uses: azure/login@v2
@@ -166,12 +174,15 @@ jobs:
           
           API_TAG="${REGISTRY}/${{ env.API_IMAGE_NAME }}:${BUILD_ID}"
           FRONTEND_TAG="${REGISTRY}/${{ env.FRONTEND_IMAGE_NAME }}:${BUILD_ID}"
+          JOBS_TAG="${REGISTRY}/${{ env.JOBS_IMAGE_NAME }}:${BUILD_ID}"
           
           echo "api-image-tag=${API_TAG}" >> $GITHUB_OUTPUT
           echo "frontend-image-tag=${FRONTEND_TAG}" >> $GITHUB_OUTPUT
+          echo "jobs-image-tag=${JOBS_TAG}" >> $GITHUB_OUTPUT
           
           echo "🏷️ API Image: ${API_TAG}"
           echo "🏷️ Frontend Image: ${FRONTEND_TAG}"
+          echo "🏷️ Jobs Image: ${JOBS_TAG}"
 
       - name: Build and push API image
         if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
@@ -195,6 +206,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Jobs image
+        if: needs.determine-environment.outputs.push-containers == 'true' && steps.registry.outputs.skip-containers != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./src/Jobs/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.jobs-image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Publish test results
         uses: dorny/test-reporter@v1
         if: always()
@@ -213,6 +235,7 @@ jobs:
               echo "📦 Container images built and pushed"
               echo "   API: ${{ steps.images.outputs.api-image-tag }}"
               echo "   Frontend: ${{ steps.images.outputs.frontend-image-tag }}"
+              echo "   Jobs: ${{ steps.images.outputs.jobs-image-tag }}"
             fi
           else
             echo "⏭️ Container push skipped by configuration"

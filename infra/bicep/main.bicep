@@ -12,9 +12,6 @@ param environmentSuffix string = 'dev'
 @description('The GitHub Actions build/run ID for unique deployment naming')
 param buildId string = newGuid()
 
-@description('The cron expression for the cleanup job schedule (default: every 2 hours)')
-param cleanupJobCronExpression string = '0 */2 * * *'
-
 @description('The object ID of the GitHub Actions Service Principal that needs AcrPush permissions')
 param githubActionsServicePrincipalObjectId string
 
@@ -37,7 +34,6 @@ var cosmosDbAccountName = 'cosmos-${appName}-${uniqueResourceToken}'
 var containerRegistryName = 'cr${appName}${uniqueResourceToken}'
 var containerAppsEnvironmentName = 'cae-${appName}-${uniqueResourceToken}'
 var userAssignedManagedIdentityName = 'uami-${appName}-${uniqueResourceToken}'
-var cleanupJobName = 'caj-${appName}-cleanup-${uniqueResourceToken}'
 
 // Deploy Log Analytics workspace first (foundation for other services)
 module logAnalytics 'modules/logAnalytics/main.bicep' = {
@@ -150,26 +146,6 @@ module containerAppsEnvironment 'modules/containerAppsEnvironment/main.bicep' = 
   }
 }
 
-// Deploy Container Apps Jobs (depends on Container Apps Environment)
-module containerAppsJobs 'modules/containerAppsJobs/main.bicep' = {
-  name: 'containerAppsJobs-${buildId}'
-  params: {
-    location: location
-    containerAppsEnvironmentName: containerAppsEnvironmentName
-    cleanupJobName: cleanupJobName
-    cleanupJobCronExpression: cleanupJobCronExpression
-    containerRegistryLoginServer: containerRegistry.outputs.loginServer
-    applicationInsightsConnectionString: appInsights.outputs.connectionString
-    cosmosDbEndpoint: cosmosDb.outputs.cosmosDbEndpoint
-    storageAccountBlobEndpoint: storageAccount.outputs.blobEndpoint
-    keyVaultUri: keyVault.outputs.keyVaultUri
-    tags: tags
-  }
-  dependsOn: [
-    containerAppsEnvironment
-  ]
-}
-
 // Role assignments for services to access other resources
 
 // Role definitions (defined once and reused)
@@ -186,11 +162,6 @@ resource containerRegistryPushRoleDefinition 'Microsoft.Authorization/roleDefini
 resource storageBlobDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role
-}
-
-resource cosmosDbDataContributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor role
 }
 
 resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
@@ -238,50 +209,6 @@ resource uamiKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   properties: {
     roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
     principalId: userAssignedManagedIdentity.outputs.userAssignedManagedIdentityPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Container Registry pull access to Cleanup Job
-resource cleanupJobAcrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistryName, cleanupJobName, containerRegistryPullRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: containerRegistryPullRoleDefinition.id
-    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Storage Blob Data Contributor access to Cleanup Job
-resource cleanupJobStorageAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccountName, cleanupJobName, storageBlobDataContributorRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: storageBlobDataContributorRoleDefinition.id
-    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Cosmos DB Data Contributor access to Cleanup Job
-resource cleanupJobCosmosDbAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(cosmosDbAccountName, cleanupJobName, cosmosDbDataContributorRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: cosmosDbDataContributorRoleDefinition.id
-    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Key Vault Secrets User access to Cleanup Job
-resource cleanupJobKeyVaultAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVaultName, cleanupJobName, keyVaultSecretsUserRoleDefinition.id)
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
-    principalId: containerAppsJobs.outputs.cleanupJobPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
