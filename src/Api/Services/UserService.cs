@@ -65,6 +65,12 @@ public interface IUserService
     /// </summary>
     /// <returns>Number of administrators</returns>
     Task<int> GetAdministratorCountAsync();
+    
+    /// <summary>
+    /// Get total count of users in the system
+    /// </summary>
+    /// <returns>Total number of users</returns>
+    Task<int> GetUserCountAsync();
 }
 
 /// <summary>
@@ -138,16 +144,22 @@ public class UserService : IUserService
                 return existingUser;
             }
 
-            // Create new user with default ContentOwner role
+            // Create new user - first user gets Administrator role, others get ContentOwner
+            var userCount = await GetUserCountAsync();
+            var role = userCount == 0 ? UserRole.Administrator : UserRole.ContentOwner;
+            
             var newUser = new CurrentUser
             {
                 Id = userId,
                 Email = email,
                 Name = name,
-                Role = UserRole.ContentOwner, // Default role - admins need to be promoted
+                Role = role,
                 TenantId = tenantId,
                 AuthenticatedAt = DateTime.UtcNow
             };
+
+            _logger.LogInformation("Creating new user {UserId} with role {Role} (total users: {UserCount})", 
+                userId, role, userCount);
 
             return await CreateOrUpdateUserAsync(newUser);
         }
@@ -299,6 +311,25 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get administrator count");
+            throw;
+        }
+    }
+    
+    /// <inheritdoc/>
+    public async Task<int> GetUserCountAsync()
+    {
+        try
+        {
+            var query = _usersContainer.GetItemQueryIterator<int>(
+                "SELECT VALUE COUNT(1) FROM c WHERE c.IsDeleted != true OR NOT IS_DEFINED(c.IsDeleted)"
+            );
+            
+            var response = await query.ReadNextAsync();
+            return response.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get user count");
             throw;
         }
     }
