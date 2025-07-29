@@ -251,7 +251,7 @@ const navigateTo = (path: string) => {
 const handleUploadSuccess = () => {
   showUploadDialog.value = false
   // Show success notification
-  ;(window as any).showNotification?.('File uploaded and shared successfully! 🎉', 'success')
+  ;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification?.('File uploaded and shared successfully! 🎉', 'success')
 }
 </script>
 

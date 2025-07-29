@@ -25,19 +25,19 @@ export class AppInsightsService {
     this.appInsights.trackPageView() // Track initial page view
   }
 
-  public trackEvent(name: string, properties?: { [key: string]: any }): void {
+  public trackEvent(name: string, properties?: Record<string, string | number | boolean>): void {
     if (this.appInsights) {
       this.appInsights.trackEvent({ name, properties })
     }
   }
 
-  public trackException(exception: Error, properties?: { [key: string]: any }): void {
+  public trackException(exception: Error, properties?: Record<string, string | number | boolean>): void {
     if (this.appInsights) {
       this.appInsights.trackException({ exception, properties })
     }
   }
 
-  public trackTrace(message: string, properties?: { [key: string]: any }): void {
+  public trackTrace(message: string, properties?: Record<string, string | number | boolean>): void {
     if (this.appInsights) {
       this.appInsights.trackTrace({ message, properties })
     }

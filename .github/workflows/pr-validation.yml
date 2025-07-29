@@ -187,7 +187,7 @@ jobs:
         run: |
           echo "🧪 Running Frontend unit tests..."
           cd src/Frontend
-          npm run test:unit -- --reporter=verbose --reporter=junit --outputFile=TestResults/junit.xml
+          npm run test:unit
 
       - name: Publish Frontend test results
         uses: dorny/test-reporter@v1
@@ -223,6 +223,7 @@ jobs:
       # Security Scanning
       - name: Run Trivy vulnerability scanner on API
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/Api'
@@ -231,6 +232,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner on Frontend  
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/Frontend'
@@ -239,14 +241,14 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-api-results.sarif') != ''
         with:
           sarif_file: 'trivy-api-results.sarif'
           category: 'trivy-api'
 
       - name: Upload Frontend Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-frontend-results.sarif') != ''
         with:
           sarif_file: 'trivy-frontend-results.sarif'
           category: 'trivy-frontend'

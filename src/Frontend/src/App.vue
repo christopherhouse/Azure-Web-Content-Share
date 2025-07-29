@@ -147,7 +147,7 @@ const handleLogout = async () => {
 
 // Make showNotification available globally
 // In a real app, you might want to use provide/inject or a composable
-;(window as any).showNotification = showNotification
+;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification = showNotification
 </script>
 
 <style scoped>

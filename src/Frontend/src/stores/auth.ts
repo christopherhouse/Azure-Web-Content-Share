@@ -107,14 +107,22 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = result.accessToken
     
     // Extract user information from ID token claims
-    const claims = result.idTokenClaims as any
+    interface IdTokenClaims {
+      oid?: string
+      sub?: string
+      email?: string
+      preferred_username?: string
+      name?: string
+    }
+    
+    const claims = result.idTokenClaims as IdTokenClaims
     if (claims) {
       // For now, we'll create a basic user object
       // In a real implementation, you'd fetch additional user details from your API
       user.value = {
-        id: claims.oid || claims.sub,
-        email: claims.email || claims.preferred_username,
-        name: claims.name || claims.preferred_username,
+        id: claims.oid || claims.sub || 'unknown',
+        email: claims.email || claims.preferred_username || 'unknown@unknown.com',
+        name: claims.name || claims.preferred_username || 'Unknown User',
         role: 'ContentOwner' as UserRole, // Default role - should be fetched from your API
         createdAt: new Date().toISOString(),
       }

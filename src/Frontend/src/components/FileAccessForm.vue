@@ -85,18 +85,18 @@ const handleSubmit = async () => {
     window.URL.revokeObjectURL(url)
 
     // Show success message
-    ;(window as any).showNotification?.(`File "${fileInfo.originalFileName}" downloaded successfully! 📥`, 'success')
+    ;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification?.(`File "${fileInfo.originalFileName}" downloaded successfully! 📥`, 'success')
     
     // Clear form
     shareCode.value = ''
     formRef.value.reset()
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Download failed:', err)
     
-    if (err.response?.status === 404) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
       error.value = 'Invalid share code or file not found'
-    } else if (err.response?.status === 410) {
+    } else if (axios.isAxiosError(err) && err.response?.status === 410) {
       error.value = 'This share code has expired'
     } else {
       error.value = 'Failed to access file. Please try again.'
