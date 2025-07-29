@@ -18,6 +18,9 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddApplicationInsights();
 
+// Add Application Insights telemetry
+builder.Services.AddApplicationInsightsTelemetry();
+
 // Add configuration
 builder.Services.Configure<AzureOptions>(builder.Configuration.GetSection(AzureOptions.SectionName));
 builder.Services.Configure<EntraIdOptions>(builder.Configuration.GetSection(EntraIdOptions.SectionName));
