@@ -118,10 +118,10 @@ const formatDate = (timestamp: string) => {
 const copyShareCode = async (shareCode: string) => {
   try {
     await navigator.clipboard.writeText(shareCode)
-    ;(window as any).showNotification?.('Share code copied to clipboard! 📋', 'success')
+    ;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification?.('Share code copied to clipboard! 📋', 'success')
   } catch (error) {
     console.error('Failed to copy share code:', error)
-    ;(window as any).showNotification?.('Failed to copy share code', 'error')
+    ;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification?.('Failed to copy share code', 'error')
   }
 }
 

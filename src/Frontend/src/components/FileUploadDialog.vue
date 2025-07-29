@@ -114,6 +114,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import type { ShareFileResponse } from '@/types'
 
 interface Props {
   modelValue: boolean
@@ -122,7 +123,7 @@ interface Props {
 defineProps<Props>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'upload-success': [response: any]
+  'upload-success': [response: ShareFileResponse]
 }>()
 
 const authStore = useAuthStore()
@@ -227,17 +228,17 @@ const handleSubmit = async () => {
     message.value = ''
     formRef.value.reset()
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Upload failed:', error)
     
     let errorMessage = 'Failed to upload file. Please try again.'
-    if (error.response?.data?.detail) {
+    if (axios.isAxiosError(error) && error.response?.data?.detail) {
       errorMessage = error.response.data.detail
-    } else if (error.response?.status === 401) {
+    } else if (axios.isAxiosError(error) && error.response?.status === 401) {
       errorMessage = 'Authentication required. Please sign in again.'
     }
     
-    ;(window as any).showNotification?.(errorMessage, 'error')
+    ;(window as Window & { showNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void }).showNotification?.(errorMessage, 'error')
   } finally {
     uploading.value = false
     uploadProgress.value = 0

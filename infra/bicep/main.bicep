@@ -161,20 +161,12 @@ module containerApps 'modules/containerApps/main.bicep' = {
     logAnalyticsWorkspaceId: logAnalytics.outputs.logAnalyticsWorkspaceId
     logAnalyticsWorkspaceCustomerId: logAnalytics.outputs.logAnalyticsWorkspaceCustomerId
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
-    applicationInsightsConnectionString: applicationInsights.outputs.connectionString
-    cosmosDbEndpoint: cosmosDb.outputs.endpoint
+    applicationInsightsConnectionString: appInsights.outputs.connectionString
+    cosmosDbEndpoint: cosmosDb.outputs.cosmosDbEndpoint
     storageAccountBlobEndpoint: storageAccount.outputs.blobEndpoint
     keyVaultUri: keyVault.outputs.keyVaultUri
     tags: tags
   }
-  dependsOn: [
-    containerAppsEnvironment
-    containerRegistry
-    applicationInsights
-    cosmosDb
-    storageAccount
-    keyVault
-  ]
 }
 
 // Role assignments for services to access other resources

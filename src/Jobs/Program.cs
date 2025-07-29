@@ -50,9 +50,18 @@ public class Program
                 config.AddEnvironmentVariables();
                 config.AddCommandLine(args);
             })
+            .ConfigureLogging((context, logging) =>
+            {
+                logging.ClearProviders();
+                logging.AddConsole();
+                logging.AddConfiguration(context.Configuration.GetSection("Logging"));
+            })
             .ConfigureServices((context, services) =>
             {
                 var configuration = context.Configuration;
+                
+                // Add Application Insights for worker service
+                services.AddApplicationInsightsTelemetryWorkerService();
                 
                 // Configure options
                 services.Configure<AzureOptions>(configuration.GetSection(AzureOptions.SectionName));
@@ -85,11 +94,5 @@ public class Program
                 services.AddScoped<IEncryptionService, EncryptionService>();
                 services.AddScoped<IFileShareService, FileShareService>();
                 services.AddScoped<ICleanupJobStateService, CleanupJobStateService>();
-            })
-            .ConfigureLogging((context, logging) =>
-            {
-                logging.ClearProviders();
-                logging.AddConsole();
-                logging.AddConfiguration(context.Configuration.GetSection("Logging"));
             });
 }
