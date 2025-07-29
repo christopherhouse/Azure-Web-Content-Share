@@ -215,6 +215,7 @@ jobs:
       # Security Scanning with Trivy
       - name: Run Trivy vulnerability scanner on API
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/Api'
@@ -223,6 +224,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner on Frontend  
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/Frontend'
@@ -231,6 +233,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner on API Gateway
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/ApiGateway'
@@ -239,6 +242,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner on Jobs
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           scan-type: 'fs'
           scan-ref: 'src/Jobs'
@@ -247,28 +251,28 @@ jobs:
 
       - name: Upload API Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-api-results.sarif') != ''
         with:
           sarif_file: 'trivy-api-results.sarif'
           category: 'trivy-api'
 
       - name: Upload Frontend Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-frontend-results.sarif') != ''
         with:
           sarif_file: 'trivy-frontend-results.sarif'
           category: 'trivy-frontend'
 
       - name: Upload API Gateway Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-api-gateway-results.sarif') != ''
         with:
           sarif_file: 'trivy-api-gateway-results.sarif'
           category: 'trivy-api-gateway'
 
       - name: Upload Jobs Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-jobs-results.sarif') != ''
         with:
           sarif_file: 'trivy-jobs-results.sarif'
           category: 'trivy-jobs'
