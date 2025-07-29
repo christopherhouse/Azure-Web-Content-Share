@@ -708,7 +708,7 @@ jobs:
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --target-port 8080 \
-              --ingress external \
+              --ingress internal \
               --min-replicas 0 \
               --max-replicas 10 \
               --cpu 0.25 \
