@@ -90,6 +90,7 @@ public class Program
             {
                 logging.ClearProviders();
                 logging.AddConsole();
+                logging.AddApplicationInsights();
                 logging.AddConfiguration(context.Configuration.GetSection("Logging"));
             });
 }
