@@ -634,34 +634,46 @@ jobs:
 
       - name: Deploy API Gateway to Container Apps
         run: |
-          APP_NAME="ca-gateway-awcs-${{ steps.config.outputs.unique-token }}"
+          APP_NAME="ca-awcs-gateway-${{ steps.config.outputs.unique-token }}"
           RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
           
           echo "🛡️ Deploying API Gateway: $APP_NAME"
+          echo "📦 Using image: ${{ steps.promote.outputs.api-gateway-image-tag }}"
           
-          # Update the Container App with the new image and configuration
-          az containerapp update \
-            --name "$APP_NAME" \
-            --resource-group "$RG_NAME" \
-            --image "${{ steps.promote.outputs.api-gateway-image-tag }}" \
-            --set-env-vars \
-              API_INTERNAL_URL="https://ca-api-awcs-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.cae-name }}.azurecontainerapps.io" \
-              AZURE_CLIENT_ID="${{ steps.config.outputs.entra-client-id }}" \
-              AZURE_CLIENT_SECRET="${{ steps.config.outputs.entra-client-secret }}" \
-              AZURE_TENANT_ID="${{ steps.config.outputs.entra-tenant-id }}" \
-              JWT_SHARED_KEY="${{ steps.config.outputs.jwt-shared-key }}" \
-            --cpu 0.25 \
-            --memory 0.5Gi \
-            --min-replicas 1 \
-            --max-replicas 10 \
-            --ingress external \
-            --target-port 8080 \
-            --transport http \
-            --query "properties.configuration.ingress.fqdn" \
-            --output tsv
+          # Check if container app already exists
+          if az containerapp show --name $APP_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
+            echo "📝 Updating existing API Gateway Container App..."
+            az containerapp update \
+              --name $APP_NAME \
+              --resource-group $RG_NAME \
+              --image ${{ steps.promote.outputs.api-gateway-image-tag }} \
+              --set-env-vars \
+                API_INTERNAL_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.container-env-name }}.azurecontainerapps.io" \
+                ASPNETCORE_ENVIRONMENT=Production
+          else
+            echo "🆕 Creating new API Gateway Container App..."
+            az containerapp create \
+              --name $APP_NAME \
+              --resource-group $RG_NAME \
+              --environment ${{ steps.config.outputs.container-env-name }} \
+              --image ${{ steps.promote.outputs.api-gateway-image-tag }} \
+              --user-assigned ${{ steps.config.outputs.uami-id }} \
+              --registry-identity ${{ steps.config.outputs.uami-id }} \
+              --registry-server ${{ steps.config.outputs.container-registry }} \
+              --target-port 8080 \
+              --ingress external \
+              --min-replicas 1 \
+              --max-replicas 10 \
+              --cpu 0.25 \
+              --memory 0.5Gi \
+              --scale-rule-name http-scaler \
+              --scale-rule-type http \
+              --scale-rule-metadata concurrentRequests=100 \
+              --env-vars \
+                API_INTERNAL_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.container-env-name }}.azurecontainerapps.io" \
+                ASPNETCORE_ENVIRONMENT=Production
+          fi
           
-          API_GATEWAY_URL="https://$(az containerapp show --name "$APP_NAME" --resource-group "$RG_NAME" --query "properties.configuration.ingress.fqdn" --output tsv)"
-          echo "🌐 API Gateway URL: $API_GATEWAY_URL"
           echo "✅ API Gateway deployment completed"
 
       - name: Deploy API to Container Apps
@@ -696,7 +708,7 @@ jobs:
               --registry-identity ${{ steps.config.outputs.uami-id }} \
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --target-port 8080 \
-              --ingress external \
+              --ingress internal \
               --min-replicas 0 \
               --max-replicas 10 \
               --cpu 0.25 \
@@ -720,7 +732,7 @@ jobs:
           RG_NAME="${{ needs.determine-environment.outputs.resource-group }}"
           
           # Get API Gateway URL for frontend environment variable
-          API_GATEWAY_URL="https://ca-gateway-awcs-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
+          API_GATEWAY_URL="https://ca-awcs-gateway-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
           
           echo "🚀 Deploying Frontend: $APP_NAME"
           echo "📦 Using image: ${{ steps.promote.outputs.frontend-image-tag }}"
@@ -817,13 +829,16 @@ jobs:
           DOMAIN=$(az containerapp env show --name $ENV_NAME --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)
           
           API_URL="https://ca-awcs-api-${UNIQUE_TOKEN}.${DOMAIN}"
+          API_GATEWAY_URL="https://ca-awcs-gateway-${UNIQUE_TOKEN}.${DOMAIN}"
           FRONTEND_URL="https://ca-awcs-frontend-${UNIQUE_TOKEN}.${DOMAIN}"
           
           echo "api-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "api-gateway-url=$API_GATEWAY_URL" >> $GITHUB_OUTPUT
           echo "frontend-url=$FRONTEND_URL" >> $GITHUB_OUTPUT
           
           echo "🌐 Application URLs:"
           echo "   API: $API_URL"
+          echo "   API Gateway: $API_GATEWAY_URL"
           echo "   Frontend: $FRONTEND_URL"
           
       - name: Run smoke tests
@@ -869,4 +884,5 @@ jobs:
           echo ""
           echo "🌐 **Access your application:**"
           echo "   Frontend: $FRONTEND_URL"
+          echo "   API Gateway: ${{ steps.urls.outputs.api-gateway-url }}"
           echo "   API: $API_URL"
