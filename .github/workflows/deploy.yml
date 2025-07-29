@@ -662,6 +662,7 @@ jobs:
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --target-port 8080 \
               --ingress external \
+              --revisions-mode multiple \
               --min-replicas 1 \
               --max-replicas 10 \
               --cpu 0.25 \
@@ -709,6 +710,7 @@ jobs:
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --target-port 8080 \
               --ingress internal \
+              --revisions-mode multiple \
               --min-replicas 0 \
               --max-replicas 10 \
               --cpu 0.25 \
@@ -760,6 +762,7 @@ jobs:
               --registry-server ${{ steps.config.outputs.container-registry }} \
               --target-port 8080 \
               --ingress external \
+              --revisions-mode multiple \
               --min-replicas 0 \
               --max-replicas 10 \
               --cpu 0.25 \
