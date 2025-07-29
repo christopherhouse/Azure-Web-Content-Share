@@ -118,6 +118,11 @@ if (entraIdConfig != null)
     // Register authorization handlers
     builder.Services.AddScoped<IAuthorizationHandler, RoleAuthorizationHandler>();
 }
+else
+{
+    // Add basic authorization services for test scenarios
+    builder.Services.AddAuthorization();
+}
 
 // Add CORS with proper configuration for authentication
 builder.Services.AddCors(options =>
@@ -208,8 +213,11 @@ app.Use(async (context, next) =>
 app.UseHttpsRedirection();
 app.UseCors();
 
-// Authentication and authorization middleware
-app.UseAuthentication();
+// Authentication and authorization middleware (only if authentication is configured)
+if (entraIdConfig != null)
+{
+    app.UseAuthentication();
+}
 app.UseAuthorization();
 
 // Map endpoints
