@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Copy package files
@@ -10,29 +10,50 @@ RUN npm ci --only=production
 COPY src/Frontend/ ./
 RUN npm run build
 
-# Production stage with nginx
-FROM nginx:1.25-alpine AS production
+# Caddy build stage with rate limiting plugin
+FROM caddy:2.8-builder AS caddy-builder
 
-# The nginx Alpine image already has nginx user/group, so we just need to configure permissions
+# Install Caddy with rate limiting plugin
+RUN xcaddy build \
+    --with github.com/mholt/caddy-ratelimit
+
+# Production stage with enhanced Caddy
+FROM alpine:3.19 AS production
+
+# Install required packages
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    tzdata \
+    libcap \
+    && rm -rf /var/cache/apk/*
+
+# Copy the custom Caddy binary with security plugins
+COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
+
 # Copy built application
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/caddy
 
-# Copy nginx configuration
-COPY src/Frontend/nginx.conf /etc/nginx/nginx.conf
+# Copy Caddy configuration
+COPY src/Frontend/Caddyfile /etc/caddy/Caddyfile
 
-# Create required directories and set permissions
-RUN mkdir -p /var/cache/nginx /var/log/nginx && \
-    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html
+# Create caddy user and set up directories
+RUN adduser -D -s /bin/sh caddy && \
+    mkdir -p /var/log/caddy /etc/caddy && \
+    chown -R caddy:caddy /var/log/caddy /usr/share/caddy /etc/caddy
+
+# Set capabilities to bind to privileged ports
+RUN setcap 'cap_net_bind_service=+ep' /usr/bin/caddy
 
 # Switch to non-root user
-USER nginx
+USER caddy
 
 # Expose port 8080
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-CMD ["nginx", "-g", "daemon off;"]
+# Caddy runs in the foreground by default
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]

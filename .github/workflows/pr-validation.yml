@@ -16,6 +16,7 @@ permissions:
   packages: write
   checks: write
   pull-requests: write
+  security-events: write
 
 env:
   API_IMAGE_NAME: azure-web-content-share-api
@@ -160,7 +161,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: src/Frontend/package-lock.json
 
@@ -240,7 +241,15 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: '.'
+          sarif_file: 'trivy-api-results.sarif'
+          category: 'trivy-api'
+
+      - name: Upload Frontend Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-frontend-results.sarif'
+          category: 'trivy-frontend'
 
       # Build Container Images (for validation)
       - name: Build API container image

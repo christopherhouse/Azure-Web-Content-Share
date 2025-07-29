@@ -4,6 +4,9 @@ param location string = resourceGroup().location
 @description('The name of the Container Apps Environment')
 param containerAppsEnvironmentName string
 
+@description('The name of the API Gateway Container App')
+param apiGatewayContainerAppName string
+
 @description('The name of the API Container App')
 param apiContainerAppName string
 
@@ -60,6 +63,86 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01'
   }
 }
 
+resource apiGatewayContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: apiGatewayContainerAppName
+  location: location
+  tags: tags
+  properties: {
+    managedEnvironmentId: containerAppsEnvironment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 8080
+        allowInsecure: false
+        traffic: [
+          {
+            weight: 100
+            latestRevision: true
+          }
+        ]
+      }
+      registries: [
+        {
+          server: containerRegistryLoginServer
+          identity: 'system'
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'api-gateway'
+          image: '${containerRegistryLoginServer}/azure-web-content-share-api-gateway:latest'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            {
+              name: 'API_INTERNAL_URL'
+              value: 'https://${apiContainerApp.properties.configuration.ingress.fqdn}'
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: 'your-client-id' // This should be replaced with proper secret reference
+            }
+            {
+              name: 'AZURE_CLIENT_SECRET'
+              value: 'your-client-secret' // This should be replaced with proper secret reference  
+            }
+            {
+              name: 'AZURE_TENANT_ID'
+              value: 'your-tenant-id' // This should be replaced with proper secret reference
+            }
+            {
+              name: 'JWT_SHARED_KEY'
+              value: 'your-jwt-key' // This should be replaced with proper secret reference
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 10
+        rules: [
+          {
+            name: 'http-scaler'
+            http: {
+              metadata: {
+                concurrentRequests: '50'
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
 resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: apiContainerAppName
   location: location
@@ -69,7 +152,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       ingress: {
-        external: true
+        external: false  // Changed to internal only - only accessible from within the environment
         targetPort: 8080
         allowInsecure: false
         traffic: [
@@ -178,7 +261,11 @@ resource frontendContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             {
               name: 'VITE_API_BASE_URL'
-              value: 'https://${apiContainerApp.properties.configuration.ingress.fqdn}'
+              value: 'https://${apiGatewayContainerApp.properties.configuration.ingress.fqdn}'
+            }
+            {
+              name: 'API_GATEWAY_URL'
+              value: 'https://${apiGatewayContainerApp.properties.configuration.ingress.fqdn}'
             }
           ]
         }
@@ -209,6 +296,18 @@ output containerAppsEnvironmentId string = containerAppsEnvironment.id
 
 @description('The name of the Container Apps Environment')
 output containerAppsEnvironmentName string = containerAppsEnvironment.name
+
+@description('The resource ID of the API Gateway Container App')
+output apiGatewayContainerAppId string = apiGatewayContainerApp.id
+
+@description('The name of the API Gateway Container App')
+output apiGatewayContainerAppName string = apiGatewayContainerApp.name
+
+@description('The FQDN of the API Gateway Container App')
+output apiGatewayContainerAppFqdn string = apiGatewayContainerApp.properties.configuration.ingress.fqdn
+
+@description('The system-assigned managed identity principal ID of the API Gateway Container App')
+output apiGatewayContainerAppPrincipalId string = apiGatewayContainerApp.identity.principalId
 
 @description('The resource ID of the API Container App')
 output apiContainerAppId string = apiContainerApp.id
