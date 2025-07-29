@@ -10,31 +10,13 @@
     servers {
         protocols h1 h2 h3
     }
-    
-    # Order directive to ensure security plugin runs first
-    order security first
 }
 
 # Main server block
 :8080 {
-    # Rate limiting for frontend
-    rate_limit {
-        zone frontend_zone {
-            key {remote_host}
-            events 200
-            window 1m
-        }
-        
-        zone api_calls_zone {
-            key {remote_host}
-            events 100
-            window 1m
-        }
-    }
-    
-    # Apply rate limiting to API calls from frontend
+    # Apply matchers for API calls from frontend
     @api_calls {
-        path_regexp ^/api/.*$
+        path /api/*
     }
     
     # Block common attack patterns  
@@ -72,19 +54,14 @@
     }
     
     handle @api_calls {
-        rate_limit api_calls_zone
         # Proxy API calls to the API Gateway instead of direct API
         reverse_proxy {env.API_GATEWAY_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
         }
     }
     
-    # Apply general rate limiting
-    rate_limit frontend_zone
+    # Security processing for all requests (after API calls are handled)
     # Enable gzip compression
     encode {
         gzip 6
