@@ -71,6 +71,7 @@ resource apiGatewayContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnvironment.id
     workloadProfileName: 'Consumption'
     configuration: {
+      activeRevisionsMode: 'Multiple'
       ingress: {
         external: true
         targetPort: 8080
@@ -151,6 +152,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnvironment.id
     workloadProfileName: 'Consumption'
     configuration: {
+      activeRevisionsMode: 'Multiple'
       ingress: {
         external: false  // Changed to internal only - only accessible from within the environment
         targetPort: 8080
@@ -231,6 +233,7 @@ resource frontendContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnvironment.id
     workloadProfileName: 'Consumption'
     configuration: {
+      activeRevisionsMode: 'Multiple'
       ingress: {
         external: true
         targetPort: 8080
