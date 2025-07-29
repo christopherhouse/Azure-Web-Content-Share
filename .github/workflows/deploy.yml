@@ -87,6 +87,7 @@ jobs:
     needs: determine-environment
     outputs:
       api-image-tag: ${{ steps.images.outputs.api-image-tag }}
+      api-gateway-image-tag: ${{ steps.images.outputs.api-gateway-image-tag }}
       frontend-image-tag: ${{ steps.images.outputs.frontend-image-tag }}
       jobs-image-tag: ${{ steps.images.outputs.jobs-image-tag }}
     
@@ -573,6 +574,7 @@ jobs:
           
           # Use GHCR images from build stage
           echo "api-image-tag=${{ needs.build-and-test.outputs.api-image-tag }}" >> $GITHUB_OUTPUT
+          echo "api-gateway-image-tag=${{ needs.build-and-test.outputs.api-gateway-image-tag }}" >> $GITHUB_OUTPUT
           echo "frontend-image-tag=${{ needs.build-and-test.outputs.frontend-image-tag }}" >> $GITHUB_OUTPUT
           echo "jobs-image-tag=${{ needs.build-and-test.outputs.jobs-image-tag }}" >> $GITHUB_OUTPUT
 
