@@ -90,6 +90,8 @@ public static class FileEndpoints
 - **Follow Microsoft .NET coding standards** exactly
 - Use **PascalCase** for public members, **camelCase** for private fields
 - Apply **async/await** patterns consistently
+- **Async methods must always be awaitable** - return `Task` or `Task<T>`, never `async void`
+- All async methods should use proper await patterns and not run synchronously
 - Implement **proper error handling** with structured logging
 - Use **dependency injection** for all services
 - Apply **configuration pattern** with strongly typed options
@@ -247,6 +249,17 @@ describe('FileUpload.vue', () => {
   - Configure diagnostic settings where supported
   - Use latest API versions
   - Include outputs for dependent resources only (no secrets)
+
+#### Deployment Patterns
+- **ALL infrastructure must be deployed with Bicep templates**, except for Container Apps and Jobs
+- **Container Apps and Jobs deployment**:
+  - Must ONLY be deployed via Azure CLI in the "deploy applications to container apps" workflow job
+  - This is an established pattern that must always be followed
+  - Never deploy Container Apps or Jobs via Bicep templates
+  - The workflow job handles image promotion from GHCR to ACR and container app deployment
+- **API Gateway deployment specifically**:
+  - Must follow the Azure CLI deployment method in the workflow
+  - Should not be deployed via Bicep templates
 
 ### 5. Container Strategy
 

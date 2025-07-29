@@ -331,13 +331,13 @@ public class FileShareService : IFileShareService
         return cleanedCount;
     }
 
-    private async Task<Container> GetCosmosContainerAsync()
+    private Task<Container> GetCosmosContainerAsync()
     {
         if (_cosmosContainer != null)
-            return _cosmosContainer;
+            return Task.FromResult(_cosmosContainer);
 
         var database = _cosmosClient.GetDatabase(_azureOptions.CosmosDb.DatabaseName);
         _cosmosContainer = database.GetContainer(_azureOptions.CosmosDb.ContainerName);
-        return _cosmosContainer;
+        return Task.FromResult(_cosmosContainer);
     }
 }
