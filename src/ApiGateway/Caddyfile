@@ -1,5 +1,6 @@
 # API Gateway Caddyfile for Azure Web Content Share
-# Provides security, rate limiting, and reverse proxy to internal API
+# Provides security and reverse proxy to internal API
+# Note: Rate limiting removed due to plugin build issues - will be implemented at infrastructure level
 
 {
     # Global options
@@ -10,46 +11,23 @@
     servers {
         protocols h1 h2 h3
     }
-    
-    # Order directive to ensure rate limiting runs before reverse proxy
-    order rate_limit before reverse_proxy
 }
 
 # Main API Gateway server block
 :8080 {
-    # Rate limiting configuration
-    rate_limit {
-        zone api_zone {
-            key {remote_host}
-            events 100
-            window 1m
-        }
-        
-        zone upload_zone {
-            key {remote_host}
-            events 10
-            window 1m
-        }
-        
-        zone auth_zone {
-            key {remote_host}
-            events 20
-            window 1m
-        }
-    }
-    
-    # Apply rate limiting to specific routes
+    # Apply route-specific matchers
     @api_routes {
-        path_regexp ^/api/(?!health).*$
+        path /api/*
+        not path /api/health
     }
     
     @upload_routes {
-        path_regexp ^/api/files.*$
+        path /api/files*
         method POST PUT
     }
     
     @auth_routes {
-        path_regexp ^/api/auth.*$
+        path /api/auth*
     }
     
     # Block common attack patterns with rewrite rules
@@ -86,21 +64,16 @@
         respond "Access Denied: Command Injection Detected" 403
     }
     
-    # Health check endpoint (no rate limiting)
-    respond /health 200 {
-        body "healthy"
-        close
+    # Health check endpoint - must come first
+    handle /health {
+        respond "healthy" 200
     }
-    
-    # Apply rate limiting and reverse proxy
+
+    # Apply reverse proxy for upload routes
     handle @upload_routes {
-        rate_limit upload_zone
         reverse_proxy {env.API_INTERNAL_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             header_up X-Gateway "API-Gateway"
             
             # Health check for upstream
@@ -114,13 +87,9 @@
     }
     
     handle @auth_routes {
-        rate_limit auth_zone
         reverse_proxy {env.API_INTERNAL_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             header_up X-Gateway "API-Gateway"
             
             health_uri /health
@@ -131,13 +100,9 @@
     }
     
     handle @api_routes {
-        rate_limit api_zone
         reverse_proxy {env.API_INTERNAL_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             header_up X-Gateway "API-Gateway"
             
             health_uri /health
@@ -152,9 +117,6 @@
         reverse_proxy {env.API_INTERNAL_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             header_up X-Gateway "API-Gateway"
             
             health_uri /health
@@ -210,23 +172,7 @@
             roll_keep 10
             roll_keep_for 168h
         }
-        format json {
-            message_key "message"
-            level_key "level"
-            time_key "timestamp"
-            time_format "2006-01-02T15:04:05.000Z07:00"
-            time_local false
-            
-            # Add security context
-            remote_ip {remote_host}
-            user_agent {request.header.User-Agent}
-            method {request.method}
-            uri {request.uri}
-            status {response.status}
-            size {response.size}
-            duration {request.duration}
-            upstream {upstream_hostport}
-        }
+        format json
         level INFO
     }
     
