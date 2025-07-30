@@ -1,196 +1,30 @@
-# API Gateway Caddyfile for Azure Web Content Share
-# Provides security and reverse proxy to internal API
-# Note: Rate limiting removed due to plugin build issues - will be implemented at infrastructure level
+# Minimal API Gateway Caddyfile
+# Simple reverse proxy to internal API with basic routing
 
 {
     # Global options
     admin off
     persist_config off
-    
-    # Security settings
-    servers {
-        protocols h1 h2 h3
-    }
 }
 
 # Main API Gateway server block
 :8080 {
-    # Apply route-specific matchers
-    @api_routes {
-        path /api/*
-    }
-    
-    @upload_routes {
-        path /api/files*
-        method POST PUT
-    }
-    
-    @auth_routes {
-        path /api/auth*
-    }
-    
-    # Block common attack patterns with rewrite rules
-    @sql_injection {
-        path_regexp (?i)(union|select|insert|delete|drop|create|alter|exec|script)
-    }
-    
-    @xss_attempts {
-        path_regexp (?i)(<script|javascript:|data:text/html|vbscript:|onload=|onerror=)
-    }
-    
-    @path_traversal {
-        path_regexp (\.\./)|(\.\.\\)|(%2e%2e%2f)|(%2e%2e%5c)
-    }
-    
-    @command_injection {
-        path_regexp (?i)(;|\||\||&|`|\$\(|\$\{)
-    }
-    
-    # Block malicious requests
-    handle @sql_injection {
-        respond "Access Denied: SQL Injection Detected" 403
-    }
-    
-    handle @xss_attempts {
-        respond "Access Denied: XSS Detected" 403
-    }
-    
-    handle @path_traversal {
-        respond "Access Denied: Path Traversal Detected" 403
-    }
-    
-    handle @command_injection {
-        respond "Access Denied: Command Injection Detected" 403
-    }
-    
-    # Health check endpoint - must come first
+    # Health check endpoint - always return 200
     handle /health {
         respond "healthy" 200
     }
 
-    # Apply reverse proxy for upload routes
-    handle @upload_routes {
+    # Route /api/* to backend API
+    handle /api/* {
         reverse_proxy {env.API_INTERNAL_URL} {
             header_up Host {upstream_hostport}
             header_up X-Real-IP {remote_host}
             header_up X-Gateway "API-Gateway"
-            
-            # Health check for upstream
-            health_uri /health
-            health_interval 30s
-            health_timeout 10s
-            
-            # Load balancing (single upstream for now)
-            lb_policy round_robin
         }
     }
     
-    handle @auth_routes {
-        reverse_proxy {env.API_INTERNAL_URL} {
-            header_up Host {upstream_hostport}
-            header_up X-Real-IP {remote_host}
-            header_up X-Gateway "API-Gateway"
-            
-            health_uri /health
-            health_interval 30s
-            health_timeout 10s
-            lb_policy round_robin
-        }
-    }
-    
-    handle @api_routes {
-        reverse_proxy {env.API_INTERNAL_URL} {
-            header_up Host {upstream_hostport}
-            header_up X-Real-IP {remote_host}
-            header_up X-Gateway "API-Gateway"
-            
-            health_uri /health
-            health_interval 30s
-            health_timeout 10s
-            lb_policy round_robin
-        }
-    }
-    
-    # Default handler for other requests
+    # All other requests return 404
     handle {
-        reverse_proxy {env.API_INTERNAL_URL} {
-            header_up Host {upstream_hostport}
-            header_up X-Real-IP {remote_host}
-            header_up X-Gateway "API-Gateway"
-            
-            health_uri /health
-            health_interval 30s
-            health_timeout 10s
-            lb_policy round_robin
-        }
-    }
-    
-    # Security headers
-    header {
-        # Prevent clickjacking
-        X-Frame-Options "DENY"
-        
-        # Prevent MIME type sniffing
-        X-Content-Type-Options "nosniff"
-        
-        # Enable XSS protection
-        X-XSS-Protection "1; mode=block"
-        
-        # Referrer policy for privacy
-        Referrer-Policy "strict-origin-when-cross-origin"
-        
-        # Content Security Policy for API
-        Content-Security-Policy "default-src 'none'; frame-ancestors 'none';"
-        
-        # Remove server information
-        -Server
-        
-        # HSTS for HTTPS
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        
-        # Additional security headers
-        X-Permitted-Cross-Domain-Policies "none"
-        Cross-Origin-Embedder-Policy "require-corp"
-        Cross-Origin-Opener-Policy "same-origin"
-        Cross-Origin-Resource-Policy "same-site"
-        
-        # Add gateway identification
-        X-Gateway "Azure-Web-Content-Share-Gateway"
-    }
-    
-    # Compression for responses
-    encode {
-        gzip 6
-        minimum_length 1024
-    }
-    
-    # Structured access logging with security events
-    log {
-        output file /var/log/caddy/access.log {
-            roll_size 100MB
-            roll_keep 10
-            roll_keep_for 168h
-        }
-        format json
-        level INFO
-    }
-    
-    # Error handling
-    handle_errors {
-        @4xx {
-            expression {http.error.status_code} >= 400 && {http.error.status_code} < 500
-        }
-        
-        @5xx {
-            expression {http.error.status_code} >= 500
-        }
-        
-        handle @4xx {
-            respond "Client Error: {http.error.status_code}" {http.error.status_code}
-        }
-        
-        handle @5xx {
-            respond "Server Error: {http.error.status_code}" {http.error.status_code}
-        }
+        respond "Not Found" 404
     }
 }
