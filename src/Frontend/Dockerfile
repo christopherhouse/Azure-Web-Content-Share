@@ -2,6 +2,14 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 
+# Accept Azure auth configuration as build arguments
+ARG VITE_AZURE_CLIENT_ID
+ARG VITE_AZURE_TENANT_ID
+
+# Set environment variables from build args so they're available during build
+ENV VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
+ENV VITE_AZURE_TENANT_ID=${VITE_AZURE_TENANT_ID}
+
 # Copy package files
 COPY src/Frontend/package*.json ./
 RUN npm ci --omit=dev
