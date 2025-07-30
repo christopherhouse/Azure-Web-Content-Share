@@ -749,7 +749,8 @@ jobs:
               --image ${{ steps.promote.outputs.frontend-image-tag }} \
               --set-env-vars \
                 VITE_API_BASE_URL="$API_GATEWAY_URL" \
-                API_GATEWAY_URL="$API_GATEWAY_URL"
+                API_GATEWAY_URL="$API_GATEWAY_URL" \
+                VITE_APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}"
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
@@ -772,7 +773,8 @@ jobs:
               --scale-rule-metadata concurrentRequests=100 \
               --env-vars \
                 VITE_API_BASE_URL="$API_GATEWAY_URL" \
-                API_GATEWAY_URL="$API_GATEWAY_URL"
+                API_GATEWAY_URL="$API_GATEWAY_URL" \
+                VITE_APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}"
           fi
           
           echo "✅ Frontend deployment completed"
