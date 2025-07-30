@@ -114,6 +114,27 @@ describe('Auth Store', () => {
     await expect(authStore.login()).rejects.toThrow('Authentication configuration error')
   })
 
+  it('should handle AADSTS650053 scope error with specific guidance', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('AADSTS650053: The application asked for scope that does not exist'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('API scope configuration error')
+    await expect(authStore.login()).rejects.toThrow('access_as_user')
+    await expect(authStore.login()).rejects.toThrow('ENTRA_ID_TROUBLESHOOTING.md')
+  })
+
+  it('should handle generic scope error with helpful message', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('scope does not exist on resource'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('Scope configuration error')
+    await expect(authStore.login()).rejects.toThrow('ENTRA_ID_TROUBLESHOOTING.md')
+  })
+
   it('should handle logout correctly', async () => {
     const authStore = useAuthStore()
     
@@ -148,5 +169,30 @@ describe('Auth Store', () => {
     const authHeader = authStore.getAuthHeader()
     
     expect(authHeader).toEqual({})
+  })
+
+  it('should provide configuration information for debugging', () => {
+    const authStore = useAuthStore()
+    
+    const config = authStore.getConfigurationInfo()
+    
+    expect(config).toHaveProperty('clientId')
+    expect(config).toHaveProperty('tenantId') 
+    expect(config).toHaveProperty('apiClientId')
+    expect(config).toHaveProperty('authority')
+    expect(config).toHaveProperty('redirectUri')
+    expect(config).toHaveProperty('requestedScopes')
+    expect(config).toHaveProperty('expectedApiScope')
+  })
+
+  it('should validate configuration and identify missing values', () => {
+    const authStore = useAuthStore()
+    
+    const validation = authStore.validateConfiguration()
+    
+    expect(validation).toHaveProperty('isValid')
+    expect(validation).toHaveProperty('issues')
+    expect(validation).toHaveProperty('config')
+    expect(validation.issues).toContain('VITE_AZURE_CLIENT_ID is not configured')
   })
 })
