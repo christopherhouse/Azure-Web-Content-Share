@@ -8,7 +8,7 @@ const msalConfig = {
   auth: {
     clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'your-client-id',
     authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'your-tenant-id'}`,
-    redirectUri: window.location.origin,
+    redirectUri: `${window.location.origin}/auth-redirect.html`,
   },
   cache: {
     cacheLocation: 'localStorage',
