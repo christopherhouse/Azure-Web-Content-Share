@@ -85,6 +85,7 @@ jobs:
     name: Build Code and Run Tests
     runs-on: ubuntu-latest
     needs: determine-environment
+    environment: development
     outputs:
       api-image-tag: ${{ steps.images.outputs.api-image-tag }}
       api-gateway-image-tag: ${{ steps.images.outputs.api-gateway-image-tag }}
@@ -201,7 +202,7 @@ jobs:
           sbom: true
           provenance: true
           build-args: |
-            VITE_AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
+            VITE_AZURE_CLIENT_ID=${{ secrets.FRONTEND_CLIENT_ID }}
             VITE_AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}          
 
       - name: Build and push Jobs image to GHCR
