@@ -3,31 +3,20 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 
 // Mock MSAL
+const mockLoginPopup = vi.fn()
+const mockLogoutPopup = vi.fn()
+const mockAcquireTokenSilent = vi.fn()
+const mockGetActiveAccount = vi.fn()
+
 vi.mock('@azure/msal-browser', () => ({
   PublicClientApplication: vi.fn().mockImplementation(() => ({
     initialize: vi.fn().mockResolvedValue(undefined),
     getAllAccounts: vi.fn().mockReturnValue([]),
     setActiveAccount: vi.fn(),
-    loginPopup: vi.fn().mockResolvedValue({
-      accessToken: 'mock-token',
-      idTokenClaims: {
-        oid: 'mock-user-id',
-        email: 'test@example.com',
-        name: 'Test User'
-      }
-    }),
-    logoutPopup: vi.fn().mockResolvedValue(undefined),
-    acquireTokenSilent: vi.fn().mockResolvedValue({
-      accessToken: 'mock-token',
-      idTokenClaims: {
-        oid: 'mock-user-id',
-        email: 'test@example.com',
-        name: 'Test User'
-      }
-    }),
-    getActiveAccount: vi.fn().mockReturnValue({
-      username: 'test@example.com'
-    })
+    loginPopup: mockLoginPopup,
+    logoutPopup: mockLogoutPopup,
+    acquireTokenSilent: mockAcquireTokenSilent,
+    getActiveAccount: mockGetActiveAccount
   }))
 }))
 
@@ -39,6 +28,34 @@ describe('Auth Store', () => {
       location: {
         origin: 'http://localhost:3000'
       }
+    })
+    
+    // Reset mocks
+    vi.clearAllMocks()
+    
+    // Set default mock implementations
+    mockLoginPopup.mockResolvedValue({
+      accessToken: 'mock-token',
+      idTokenClaims: {
+        oid: 'mock-user-id',
+        email: 'test@example.com',
+        name: 'Test User'
+      }
+    })
+    
+    mockLogoutPopup.mockResolvedValue(undefined)
+    
+    mockAcquireTokenSilent.mockResolvedValue({
+      accessToken: 'mock-token',
+      idTokenClaims: {
+        oid: 'mock-user-id',
+        email: 'test@example.com',
+        name: 'Test User'
+      }
+    })
+    
+    mockGetActiveAccount.mockReturnValue({
+      username: 'test@example.com'
     })
   })
 
@@ -59,6 +76,42 @@ describe('Auth Store', () => {
     expect(authStore.isAuthenticated).toBe(true)
     expect(authStore.user?.email).toBe('test@example.com')
     expect(authStore.accessToken).toBe('mock-token')
+  })
+
+  it('should handle popup blocked error with friendly message', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('popup_window_error'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('Login was cancelled or popup was blocked')
+  })
+
+  it('should handle user cancelled error with friendly message', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('user_cancelled'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('Login was cancelled or popup was blocked')
+  })
+
+  it('should handle network error with friendly message', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('network error occurred'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('Network error during login')
+  })
+
+  it('should handle invalid client error with friendly message', async () => {
+    const authStore = useAuthStore()
+    mockLoginPopup.mockRejectedValue(new Error('invalid_client'))
+    
+    await authStore.initializeMsal()
+    
+    await expect(authStore.login()).rejects.toThrow('Authentication configuration error')
   })
 
   it('should handle logout correctly', async () => {
