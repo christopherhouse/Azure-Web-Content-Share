@@ -648,7 +648,7 @@ jobs:
               --resource-group $RG_NAME \
               --image ${{ steps.promote.outputs.api-gateway-image-tag }} \
               --set-env-vars \
-                API_INTERNAL_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.container-env-name }}.azurecontainerapps.io" \
+                API_INTERNAL_URL="http://ca-awcs-api-${{ steps.config.outputs.unique-token }}:8080" \
                 ASPNETCORE_ENVIRONMENT=Production
           else
             echo "🆕 Creating new API Gateway Container App..."
@@ -671,7 +671,7 @@ jobs:
               --scale-rule-type http \
               --scale-rule-metadata concurrentRequests=100 \
               --env-vars \
-                API_INTERNAL_URL="https://ca-awcs-api-${{ steps.config.outputs.unique-token }}.internal.${{ steps.config.outputs.container-env-name }}.azurecontainerapps.io" \
+                API_INTERNAL_URL="http://ca-awcs-api-${{ steps.config.outputs.unique-token }}:8080" \
                 ASPNETCORE_ENVIRONMENT=Production
           fi
           
