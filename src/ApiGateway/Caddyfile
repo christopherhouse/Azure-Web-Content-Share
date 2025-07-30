@@ -18,7 +18,6 @@
     # Apply route-specific matchers
     @api_routes {
         path /api/*
-        not path /api/health
     }
     
     @upload_routes {
