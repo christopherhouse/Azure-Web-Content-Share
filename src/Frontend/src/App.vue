@@ -131,7 +131,22 @@ const handleLogin = async () => {
     showNotification('Successfully signed in! 🎉', 'success')
   } catch (error) {
     console.error('Login failed:', error)
-    showNotification('Failed to sign in. Please try again.', 'error')
+    
+    // Show more specific error messages to users
+    let errorMessage = 'Failed to sign in. Please try again.'
+    if (error instanceof Error) {
+      if (error.message.includes('popup was blocked')) {
+        errorMessage = 'Login popup was blocked. Please allow popups for this site and try again.'
+      } else if (error.message.includes('cancelled')) {
+        errorMessage = 'Login was cancelled. Please try again when ready.'
+      } else if (error.message.includes('network')) {
+        errorMessage = 'Network connection error. Please check your internet connection.'
+      } else if (error.message.includes('configuration')) {
+        errorMessage = 'Authentication is not properly configured. Please contact support.'
+      }
+    }
+    
+    showNotification(errorMessage, 'error')
   }
 }
 

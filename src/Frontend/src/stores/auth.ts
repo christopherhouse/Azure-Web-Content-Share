@@ -8,7 +8,7 @@ const msalConfig = {
   auth: {
     clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'your-client-id',
     authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'your-tenant-id'}`,
-    redirectUri: window.location.origin,
+    redirectUri: `${window.location.origin}/auth-redirect.html`,
   },
   cache: {
     cacheLocation: 'localStorage',
@@ -60,6 +60,18 @@ export const useAuthStore = defineStore('auth', () => {
       await handleAuthenticationResult(response)
     } catch (error) {
       console.error('Login failed:', error)
+      
+      // Provide more specific error messages based on the error type
+      if (error instanceof Error) {
+        if (error.message.includes('popup_window_error') || error.message.includes('user_cancelled')) {
+          throw new Error('Login was cancelled or popup was blocked. Please ensure popups are allowed and try again.')
+        } else if (error.message.includes('network')) {
+          throw new Error('Network error during login. Please check your connection and try again.')
+        } else if (error.message.includes('invalid_client')) {
+          throw new Error('Authentication configuration error. Please contact support.')
+        }
+      }
+      
       throw error
     } finally {
       isLoading.value = false
