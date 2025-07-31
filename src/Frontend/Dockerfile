@@ -2,14 +2,6 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 
-# Accept Azure auth configuration as build arguments
-ARG VITE_AZURE_CLIENT_ID
-ARG VITE_AZURE_TENANT_ID
-
-# Set environment variables from build args so they're available during build
-ENV VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
-ENV VITE_AZURE_TENANT_ID=${VITE_AZURE_TENANT_ID}
-
 # Copy package files
 COPY src/Frontend/package*.json ./
 RUN npm ci --omit=dev
@@ -27,6 +19,10 @@ COPY --from=build /app/dist /usr/share/caddy
 # Copy Caddy configuration
 COPY src/Frontend/Caddyfile /etc/caddy/Caddyfile
 
+# Copy startup script for runtime configuration injection
+COPY src/Frontend/startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/startup.sh
+
 # Create caddy log directory
 RUN mkdir -p /var/log/caddy
 
@@ -37,5 +33,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Caddy runs in the foreground by default
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+# Use startup script instead of direct Caddy
+CMD ["/usr/local/bin/startup.sh"]

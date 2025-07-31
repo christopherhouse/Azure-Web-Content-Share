@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { runtimeConfig } from '@/services/runtimeConfig'
 
 interface ShareResult {
   shareId: string
@@ -93,7 +94,7 @@ const shareFile = async () => {
     formData.append('recipientEmail', recipientEmail.value)
     formData.append('expirationHours', expirationHours.value.toString())
     
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7095'
+    const apiBaseUrl = runtimeConfig.api.baseUrl || 'https://localhost:7095'
     const response = await fetch(`${apiBaseUrl}/api/files/share`, {
       method: 'POST',
       headers: {

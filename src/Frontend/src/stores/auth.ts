@@ -2,12 +2,13 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { PublicClientApplication, AuthenticationResult, SilentRequest } from '@azure/msal-browser'
 import type { User, UserRole } from '@/types'
+import { runtimeConfig } from '@/services/runtimeConfig'
 
-// MSAL configuration - these would typically come from environment variables
+// MSAL configuration using runtime config
 const msalConfig = {
   auth: {
-    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'your-client-id',
-    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'your-tenant-id'}`,
+    clientId: runtimeConfig.azure.clientId || 'your-client-id',
+    authority: `https://login.microsoftonline.com/${runtimeConfig.azure.tenantId || 'your-tenant-id'}`,
     redirectUri: `${window.location.origin}/auth-redirect.html`,
   },
   cache: {
@@ -17,7 +18,7 @@ const msalConfig = {
 }
 
 const loginRequest = {
-  scopes: ['openid', 'profile', 'email', `api://${import.meta.env.VITE_API_CLIENT_ID || 'api-client-id'}/access_as_user`],
+  scopes: ['openid', 'profile', 'email', `api://${runtimeConfig.api.clientId || 'api-client-id'}/access_as_user`],
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -184,28 +185,28 @@ export const useAuthStore = defineStore('auth', () => {
 
   const getConfigurationInfo = () => {
     return {
-      clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'not-configured',
-      tenantId: import.meta.env.VITE_AZURE_TENANT_ID || 'not-configured',
-      apiClientId: import.meta.env.VITE_API_CLIENT_ID || 'not-configured',
+      clientId: runtimeConfig.azure.clientId || 'not-configured',
+      tenantId: runtimeConfig.azure.tenantId || 'not-configured',
+      apiClientId: runtimeConfig.api.clientId || 'not-configured',
       authority: msalConfig.auth.authority,
       redirectUri: msalConfig.auth.redirectUri,
       requestedScopes: loginRequest.scopes,
-      expectedApiScope: `api://${import.meta.env.VITE_API_CLIENT_ID || 'api-client-id'}/access_as_user`
+      expectedApiScope: `api://${runtimeConfig.api.clientId || 'api-client-id'}/access_as_user`
     }
   }
 
   const validateConfiguration = () => {
     const issues = []
     
-    if (!import.meta.env.VITE_AZURE_CLIENT_ID || import.meta.env.VITE_AZURE_CLIENT_ID === 'your-client-id') {
+    if (!runtimeConfig.azure.clientId || runtimeConfig.azure.clientId === 'your-client-id') {
       issues.push('VITE_AZURE_CLIENT_ID is not configured')
     }
     
-    if (!import.meta.env.VITE_AZURE_TENANT_ID || import.meta.env.VITE_AZURE_TENANT_ID === 'your-tenant-id') {
+    if (!runtimeConfig.azure.tenantId || runtimeConfig.azure.tenantId === 'your-tenant-id') {
       issues.push('VITE_AZURE_TENANT_ID is not configured')
     }
     
-    if (!import.meta.env.VITE_API_CLIENT_ID || import.meta.env.VITE_API_CLIENT_ID === 'api-client-id') {
+    if (!runtimeConfig.api.clientId || runtimeConfig.api.clientId === 'api-client-id') {
       issues.push('VITE_API_CLIENT_ID is not configured')
     }
     

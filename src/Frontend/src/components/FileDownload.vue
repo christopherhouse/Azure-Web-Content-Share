@@ -39,6 +39,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { runtimeConfig } from '@/services/runtimeConfig'
 
 interface FileInfo {
   id: string
@@ -65,7 +66,7 @@ const downloadFile = async () => {
   fileInfo.value = null
   
   try {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7095'
+    const apiBaseUrl = runtimeConfig.api.baseUrl || 'https://localhost:7095'
     const response = await fetch(`${apiBaseUrl}/api/files/metadata/${shareCode.value.trim()}`)
     
     if (!response.ok) {
@@ -89,7 +90,7 @@ const initiateDownload = async () => {
   if (!shareCode.value || !fileInfo.value) return
   
   try {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7095'
+    const apiBaseUrl = runtimeConfig.api.baseUrl || 'https://localhost:7095'
     const response = await fetch(`${apiBaseUrl}/api/files/download/${shareCode.value.trim()}`)
     
     if (!response.ok) {
