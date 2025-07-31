@@ -7,10 +7,6 @@ on:
         description: 'Target environment (development or production)'
         required: true
         type: string
-      resource-group:
-        description: 'Resource group name'
-        required: true
-        type: string
       api-image-tag:
         description: 'API container image tag'
         required: true
@@ -88,7 +84,7 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           scope: resourcegroup
-          resourceGroupName: ${{ inputs.resource-group }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: bicep/main.bicep
           parameters: bicep/parameters/${{ inputs.environment }}.bicepparam
           failOnStdErr: false
@@ -98,7 +94,7 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           scope: resourcegroup
-          resourceGroupName: ${{ inputs.resource-group }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: bicep/main.bicep
           parameters: bicep/parameters/${{ inputs.environment }}.bicepparam
           failOnStdErr: false
@@ -107,7 +103,7 @@ jobs:
       - name: Output deployment results
         run: |
           echo "✅ Infrastructure deployed successfully to ${{ inputs.environment }}"
-          echo "🏗️ Resource Group: ${{ inputs.resource-group }}"
+          echo "🏗️ Resource Group: ${{ vars.AZURE_RESOURCE_GROUP }}"
           echo "🔧 Container Apps Environment: ${{ steps.deploy.outputs.containerAppsEnvironmentName }}"
           echo "📦 Container Registry: ${{ steps.deploy.outputs.containerRegistryLoginServer }}"
 
@@ -129,7 +125,7 @@ jobs:
           
           # Get Cosmos DB account name from deployment outputs
           COSMOS_ACCOUNT_NAME=$(az deployment group show \
-            --resource-group "${{ inputs.resource-group }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ inputs.environment }}-${{ github.run_number }}" \
             --query 'properties.outputs.cosmosDbAccountName.value' -o tsv)
           
@@ -141,12 +137,12 @@ jobs:
           echo "🗄️ Cosmos DB Account: $COSMOS_ACCOUNT_NAME"
           
           # Create scope for the Cosmos DB account
-          COSMOS_SCOPE="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ inputs.resource-group }}/providers/Microsoft.DocumentDB/databaseAccounts/${COSMOS_ACCOUNT_NAME}"
+          COSMOS_SCOPE="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.AZURE_RESOURCE_GROUP }}/providers/Microsoft.DocumentDB/databaseAccounts/${COSMOS_ACCOUNT_NAME}"
           
           # Assign Cosmos DB Built-in Data Contributor role to UAMI
           echo "🗄️ Assigning Cosmos DB Built-in Data Contributor role to UAMI..."
           az cosmosdb sql role assignment create \
-            --resource-group "${{ inputs.resource-group }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --account-name "$COSMOS_ACCOUNT_NAME" \
             --role-definition-id "00000000-0000-0000-0000-000000000002" \
             --principal-id "$UAMI_PRINCIPAL_ID" \
@@ -160,7 +156,7 @@ jobs:
           
           # Get resource group ID for scoping
           RG_ID=$(az group show \
-            --name "${{ inputs.resource-group }}" \
+            --name "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --query 'id' -o tsv)
           
           # Assign AcrPush role to GitHub Actions Service Principal
@@ -210,7 +206,7 @@ jobs:
             if [ -z "$UAMI_ID" ] || [ "$UAMI_ID" = "null" ]; then
               echo "⚠️ UAMI ID is empty from job outputs, querying deployment directly..."
               DEPLOYMENT_NAME="infra-${{ inputs.environment }}-${{ github.run_number }}"
-              RG_NAME="${{ inputs.resource-group }}"
+              RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
               
               UAMI_ID=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.userAssignedManagedIdentityId.value' -o tsv)
               echo "   Direct query UAMI ID: '$UAMI_ID'"
@@ -219,7 +215,7 @@ jobs:
             if [ -z "$UNIQUE_TOKEN" ] || [ "$UNIQUE_TOKEN" = "null" ]; then
               echo "⚠️ Unique token is empty from job outputs, querying deployment directly..."
               DEPLOYMENT_NAME="infra-${{ inputs.environment }}-${{ github.run_number }}"
-              RG_NAME="${{ inputs.resource-group }}"
+              RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
               
               UNIQUE_TOKEN=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.uniqueResourceToken.value' -o tsv)
               echo "   Direct query unique token: '$UNIQUE_TOKEN'"
@@ -228,7 +224,7 @@ jobs:
             if [ -z "$CONTAINER_ENV_NAME" ] || [ "$CONTAINER_ENV_NAME" = "null" ]; then
               echo "⚠️ Container env name is empty from job outputs, querying deployment directly..."
               DEPLOYMENT_NAME="infra-${{ inputs.environment }}-${{ github.run_number }}"
-              RG_NAME="${{ inputs.resource-group }}"
+              RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
               
               CONTAINER_ENV_NAME=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerAppsEnvironmentName.value' -o tsv)
               echo "   Direct query container env name: '$CONTAINER_ENV_NAME'"
@@ -237,7 +233,7 @@ jobs:
             if [ -z "$CONTAINER_REGISTRY" ] || [ "$CONTAINER_REGISTRY" = "null" ]; then
               echo "⚠️ Container registry is empty from job outputs, querying deployment directly..."
               DEPLOYMENT_NAME="infra-${{ inputs.environment }}-${{ github.run_number }}"
-              RG_NAME="${{ inputs.resource-group }}"
+              RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
               
               CONTAINER_REGISTRY=$(az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv)
               echo "   Direct query container registry: '$CONTAINER_REGISTRY'"
@@ -245,7 +241,7 @@ jobs:
           else
             # Get from existing deployment (skip infra mode)
             DEPLOYMENT_NAME="infra-${{ inputs.environment }}-latest"
-            RG_NAME="${{ inputs.resource-group }}"
+            RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
             
             # Verify deployment exists
             if ! az deployment group show --resource-group $RG_NAME --name $DEPLOYMENT_NAME > /dev/null 2>&1; then
@@ -362,7 +358,7 @@ jobs:
       - name: Deploy API Gateway to Container Apps
         run: |
           APP_NAME="ca-awcs-gateway-${{ steps.config.outputs.unique-token }}"
-          RG_NAME="${{ inputs.resource-group }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           
           echo "🛡️ Deploying API Gateway: $APP_NAME"
           echo "📦 Using image: ${{ steps.promote.outputs.api-gateway-image-tag }}"
@@ -407,7 +403,7 @@ jobs:
       - name: Deploy API to Container Apps
         run: |
           APP_NAME="ca-awcs-api-${{ steps.config.outputs.unique-token }}"
-          RG_NAME="${{ inputs.resource-group }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           
           echo "🚀 Deploying API: $APP_NAME"
           echo "📦 Using image: ${{ steps.promote.outputs.api-image-tag }}"
@@ -458,7 +454,7 @@ jobs:
       - name: Deploy Frontend to Container Apps
         run: |
           APP_NAME="ca-awcs-frontend-${{ steps.config.outputs.unique-token }}"
-          RG_NAME="${{ inputs.resource-group }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           
           # Get API Gateway URL for frontend environment variable
           API_GATEWAY_URL="https://ca-awcs-gateway-${{ steps.config.outputs.unique-token }}.$(az containerapp env show --name ${{ steps.config.outputs.container-env-name }} --resource-group $RG_NAME --query 'properties.defaultDomain' -o tsv)"
@@ -517,7 +513,7 @@ jobs:
       - name: Deploy Cleanup Job to Container Apps
         run: |
           JOB_NAME="caj-awcs-cleanup-${{ steps.config.outputs.unique-token }}"
-          RG_NAME="${{ inputs.resource-group }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           
           echo "🗄️ Deploying Cleanup Job: $JOB_NAME"
           echo "📦 Using image: ${{ steps.promote.outputs.jobs-image-tag }}"
@@ -562,7 +558,7 @@ jobs:
       - name: Get application URLs
         id: urls
         run: |
-          RG_NAME="${{ inputs.resource-group }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           UNIQUE_TOKEN="${{ steps.config.outputs.unique-token }}"
           ENV_NAME="${{ steps.config.outputs.container-env-name }}"
           

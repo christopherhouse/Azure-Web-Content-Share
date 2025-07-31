@@ -27,6 +27,7 @@ jobs:
     name: Build, Test, and Validate PR
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
+    environment: development
     
     steps:
       - name: Checkout repository
@@ -46,8 +47,8 @@ jobs:
         id: registry
         run: |
           # Get container registry details from dev environment
-          RG_NAME="rg-awcs-dev"
-          DEPLOYMENT_NAME="infra-dev-latest"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
+          DEPLOYMENT_NAME="infra-development-latest"
           
           # Try to get registry details from latest deployment
           REGISTRY_NAME=$(az deployment group show \
@@ -60,9 +61,9 @@ jobs:
             --query 'properties.outputs.containerRegistryLoginServer.value' -o tsv 2>/dev/null || echo "")
           
           if [ -z "$REGISTRY_NAME" ] || [ -z "$REGISTRY_SERVER" ]; then
-            echo "❌ Could not retrieve dev container registry details."
-            echo "   Ensure dev environment infrastructure is deployed first."
-            echo "   Run: 'Deploy Infrastructure and Applications' workflow with environment=dev"
+            echo "❌ Could not retrieve development container registry details."
+            echo "   Ensure development environment infrastructure is deployed first."
+            echo "   Run: 'Deploy Infrastructure and Applications' workflow with environment=development"
             exit 1
           fi
           
