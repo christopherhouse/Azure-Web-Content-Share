@@ -2,10 +2,10 @@ using '../main.bicep'
 
 param location = 'eastus2'
 param appName = 'awcs'
-param environmentSuffix = 'prod'
+param environmentSuffix = 'development'
 param tags = {
   Application: 'Azure Web Content Share'
-  Environment: 'Production'
+  Environment: 'Development'
   CreatedBy: 'Bicep'
   CostCenter: 'Engineering'
 }

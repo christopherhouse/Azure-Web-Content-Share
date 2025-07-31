@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Target environment (dev or prod)'
+        description: 'Target environment (development or production)'
         required: true
         type: string
       resource-group:

@@ -6,23 +6,23 @@ This guide explains the multi-environment CI/CD setup for Azure Web Content Shar
 
 The deployment system supports three distinct deployment patterns:
 
-1. **Development Only** (`dev`): Deploys to development environment for testing
-2. **Production Only** (`prod`): Deploys to production environment (requires approval)
-3. **Both Environments** (`both`): Deploys to dev first, then prod with approval gate
+1. **Development Only** (`development`): Deploys to development environment for testing
+2. **Production Only** (`production`): Deploys to production environment (requires approval)
+3. **Both Environments** (`both`): Deploys to development first, then production with approval gate
 
 ### Deployment Flow
 
 ```mermaid
 graph LR
     A[Build & Test] --> B{Environment}
-    B -->|dev| C[Deploy Dev]
-    B -->|prod| D[Manual Approval]
+    B -->|development| C[Deploy Development]
+    B -->|production| D[Manual Approval]
     B -->|both| C
     C -->|both| D
-    D --> E[Deploy Prod]
+    D --> E[Deploy Production]
     
-    C --> F[Dev Environment URLs]
-    E --> G[Prod Environment URLs]
+    C --> F[Development Environment URLs]
+    E --> G[Production Environment URLs]
 ```
 
 ## 🔐 Required GitHub Secrets Configuration
@@ -44,14 +44,14 @@ Configure these as **Repository Variables** (not secrets) for the development en
 
 | Variable Name | Description | Example Value |
 |---------------|-------------|---------------|
-| `FRONTEND_CLIENT_ID` | Azure AD App Registration Client ID for Frontend (Dev) | `frontend-dev-client-id` |
+| `FRONTEND_CLIENT_ID` | Azure AD App Registration Client ID for Frontend (Development) | `frontend-development-client-id` |
 
 #### Production Environment Secrets
 Configure these in the **Production Environment** settings:
 
 | Secret Name | Description | Example Value |
 |-------------|-------------|---------------|
-| `FRONTEND_CLIENT_ID` | Azure AD App Registration Client ID for Frontend (Prod) | `frontend-prod-client-id` |
+| `FRONTEND_CLIENT_ID` | Azure AD App Registration Client ID for Frontend (Production) | `frontend-production-client-id` |
 
 ## 🛡️ Environment Protection Rules
 
@@ -73,19 +73,19 @@ Use the **Deploy Infrastructure and Applications** workflow with these options:
 
 #### Deploy to Development Only
 ```yaml
-environment: dev
+environment: development
 pushContainers: true
 skipInfrastructure: false
 ```
 
 #### Deploy to Production Only (with approval)
 ```yaml
-environment: prod
+environment: production
 pushContainers: true
 skipInfrastructure: false
 ```
 
-#### Deploy to Both Environments (dev → prod)
+#### Deploy to Both Environments (development → production)
 ```yaml
 environment: both
 pushContainers: true
@@ -94,8 +94,8 @@ skipInfrastructure: false
 
 ### Automatic Deployment
 
-- **Push to `main`**: Automatically deploys to development environment
-- **Production deployments**: Always require manual trigger and approval
+- **Push to `main`**: Automatically deploys to both development and production environments (with approval gate before production)
+- **Production deployments**: Always require manual approval after successful development deployment
 
 ## 🔧 Workflow Features
 
@@ -169,13 +169,13 @@ Each deployment provides detailed logs including:
 
 ```bash
 # Check deployment status
-az deployment group list --resource-group rg-awcs-dev --output table
+az deployment group list --resource-group rg-awcs-development --output table
 
 # View container app logs
-az containerapp logs show --name ca-awcs-api-<token> --resource-group rg-awcs-dev
+az containerapp logs show --name ca-awcs-api-<token> --resource-group rg-awcs-development
 
 # Verify environment variables
-az containerapp show --name ca-awcs-frontend-<token> --resource-group rg-awcs-dev --query properties.template.containers[0].env
+az containerapp show --name ca-awcs-frontend-<token> --resource-group rg-awcs-development --query properties.template.containers[0].env
 ```
 
 ## 🔄 Migration from Single Environment
@@ -183,8 +183,8 @@ az containerapp show --name ca-awcs-frontend-<token> --resource-group rg-awcs-de
 If migrating from the previous single-environment setup:
 
 1. **Update GitHub Secrets**: Add new environment-specific secrets
-2. **Configure Environments**: Set up dev/prod environment protection
-3. **Test Deployment**: Run a dev-only deployment first
+2. **Configure Environments**: Set up development/production environment protection
+3. **Test Deployment**: Run a development-only deployment first
 4. **Verify Configuration**: Ensure runtime config works correctly
 5. **Deploy Production**: Use approval-gated production deployment
 

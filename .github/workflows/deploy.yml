@@ -9,11 +9,11 @@ on:
       environment:
         description: 'Select environment to deploy'
         required: true
-        default: 'dev'
+        default: 'development'
         type: choice
         options:
-          - dev
-          - prod
+          - development
+          - production
           - both
       pushContainers:
         description: 'Push containers and deploy apps (false = build and test only)'
@@ -48,10 +48,10 @@ jobs:
     name: Determine Target Environment
     runs-on: ubuntu-latest
     outputs:
-      deploy-dev: ${{ steps.env.outputs.deploy-dev }}
-      deploy-prod: ${{ steps.env.outputs.deploy-prod }}
-      dev-resource-group: ${{ steps.env.outputs.dev-resource-group }}
-      prod-resource-group: ${{ steps.env.outputs.prod-resource-group }}
+      deploy-development: ${{ steps.env.outputs.deploy-development }}
+      deploy-production: ${{ steps.env.outputs.deploy-production }}
+      development-resource-group: ${{ steps.env.outputs.development-resource-group }}
+      production-resource-group: ${{ steps.env.outputs.production-resource-group }}
       skip-infrastructure: ${{ steps.env.outputs.skip-infrastructure }}
       push-containers: ${{ steps.env.outputs.push-containers }}
     
@@ -64,33 +64,33 @@ jobs:
             
             # Determine which environments to deploy
             if [ "$ENVIRONMENT" == "both" ]; then
-              echo "deploy-dev=true" >> $GITHUB_OUTPUT
-              echo "deploy-prod=true" >> $GITHUB_OUTPUT
-            elif [ "$ENVIRONMENT" == "dev" ]; then
-              echo "deploy-dev=true" >> $GITHUB_OUTPUT
-              echo "deploy-prod=false" >> $GITHUB_OUTPUT
-            elif [ "$ENVIRONMENT" == "prod" ]; then
-              echo "deploy-dev=false" >> $GITHUB_OUTPUT
-              echo "deploy-prod=true" >> $GITHUB_OUTPUT
+              echo "deploy-development=true" >> $GITHUB_OUTPUT
+              echo "deploy-production=true" >> $GITHUB_OUTPUT
+            elif [ "$ENVIRONMENT" == "development" ]; then
+              echo "deploy-development=true" >> $GITHUB_OUTPUT
+              echo "deploy-production=false" >> $GITHUB_OUTPUT
+            elif [ "$ENVIRONMENT" == "production" ]; then
+              echo "deploy-development=false" >> $GITHUB_OUTPUT
+              echo "deploy-production=true" >> $GITHUB_OUTPUT
             fi
             
             # Set resource group names
             if [ -n "${{ github.event.inputs.resourceGroupName }}" ]; then
               if [ "$ENVIRONMENT" == "both" ]; then
-                echo "dev-resource-group=rg-awcs-dev" >> $GITHUB_OUTPUT
-                echo "prod-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
+                echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
+                echo "production-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
               else
-                if [ "$ENVIRONMENT" == "dev" ]; then
-                  echo "dev-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
-                  echo "prod-resource-group=rg-awcs-prod" >> $GITHUB_OUTPUT
+                if [ "$ENVIRONMENT" == "development" ]; then
+                  echo "development-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
+                  echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
                 else
-                  echo "dev-resource-group=rg-awcs-dev" >> $GITHUB_OUTPUT
-                  echo "prod-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
+                  echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
+                  echo "production-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
                 fi
               fi
             else
-              echo "dev-resource-group=rg-awcs-dev" >> $GITHUB_OUTPUT
-              echo "prod-resource-group=rg-awcs-prod" >> $GITHUB_OUTPUT
+              echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
+              echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
             fi
             
             if [ "${{ github.event.inputs.skipInfrastructure }}" == "true" ]; then
@@ -105,18 +105,18 @@ jobs:
               echo "push-containers=false" >> $GITHUB_OUTPUT
             fi
           else
-            # Push to main = deploy to dev only with containers
-            echo "deploy-dev=true" >> $GITHUB_OUTPUT
-            echo "deploy-prod=false" >> $GITHUB_OUTPUT
-            echo "dev-resource-group=rg-awcs-dev" >> $GITHUB_OUTPUT
-            echo "prod-resource-group=rg-awcs-prod" >> $GITHUB_OUTPUT
+            # Push to main = deploy to both environments with containers
+            echo "deploy-development=true" >> $GITHUB_OUTPUT
+            echo "deploy-production=true" >> $GITHUB_OUTPUT
+            echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
+            echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
             echo "skip-infrastructure=false" >> $GITHUB_OUTPUT
             echo "push-containers=true" >> $GITHUB_OUTPUT
           fi
           
           echo "🎯 Deployment Plan:"
-          echo "   Deploy to Dev: $([ '${{ github.event_name }}' == 'workflow_dispatch' ] && echo '${{ github.event.inputs.environment }}' | grep -q 'dev\|both' && echo 'true' || echo 'false' || echo 'true')"
-          echo "   Deploy to Prod: $([ '${{ github.event_name }}' == 'workflow_dispatch' ] && echo '${{ github.event.inputs.environment }}' | grep -q 'prod\|both' && echo 'true' || echo 'false')"
+          echo "   Deploy to Development: $([ '${{ github.event_name }}' == 'workflow_dispatch' ] && echo '${{ github.event.inputs.environment }}' | grep -q 'development\|both' && echo 'true' || echo 'false' || echo 'true')"
+          echo "   Deploy to Production: $([ '${{ github.event_name }}' == 'workflow_dispatch' ] && echo '${{ github.event.inputs.environment }}' | grep -q 'production\|both' && echo 'true' || echo 'false' || echo 'true')"
 
   build-and-test:
     name: Build Code and Run Tests
@@ -408,14 +408,14 @@ jobs:
           echo "   Jobs: ${{ steps.images.outputs.jobs-image-tag }}"
 
   # Deploy to Development Environment
-  deploy-dev:
+  deploy-development:
     name: Deploy to Development
     needs: [determine-environment, build-and-test]
-    if: needs.determine-environment.outputs.deploy-dev == 'true' && needs.determine-environment.outputs.push-containers == 'true'
+    if: needs.determine-environment.outputs.deploy-development == 'true' && needs.determine-environment.outputs.push-containers == 'true'
     uses: ./.github/workflows/deploy-environment.yml
     with:
-      environment: dev
-      resource-group: ${{ needs.determine-environment.outputs.dev-resource-group }}
+      environment: development
+      resource-group: ${{ needs.determine-environment.outputs.development-resource-group }}
       api-image-tag: ${{ needs.build-and-test.outputs.api-image-tag }}
       api-gateway-image-tag: ${{ needs.build-and-test.outputs.api-gateway-image-tag }}
       frontend-image-tag: ${{ needs.build-and-test.outputs.frontend-image-tag }}
@@ -423,15 +423,15 @@ jobs:
       skip-infrastructure: ${{ needs.determine-environment.outputs.skip-infrastructure == 'true' }}
     secrets: inherit
 
-  # Deploy to Production Environment (requires dev success + approval)
-  deploy-prod:
+  # Deploy to Production Environment (requires development success + approval)
+  deploy-production:
     name: Deploy to Production
-    needs: [determine-environment, build-and-test, deploy-dev]
-    if: always() && needs.determine-environment.outputs.deploy-prod == 'true' && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped')
+    needs: [determine-environment, build-and-test, deploy-development]
+    if: always() && needs.determine-environment.outputs.deploy-production == 'true' && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-development.result == 'success' || needs.deploy-development.result == 'skipped')
     uses: ./.github/workflows/deploy-environment.yml
     with:
-      environment: prod
-      resource-group: ${{ needs.determine-environment.outputs.prod-resource-group }}
+      environment: production
+      resource-group: ${{ needs.determine-environment.outputs.production-resource-group }}
       api-image-tag: ${{ needs.build-and-test.outputs.api-image-tag }}
       api-gateway-image-tag: ${{ needs.build-and-test.outputs.api-gateway-image-tag }}
       frontend-image-tag: ${{ needs.build-and-test.outputs.frontend-image-tag }}
@@ -443,7 +443,7 @@ jobs:
   deployment-summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [determine-environment, build-and-test, deploy-dev, deploy-prod]
+    needs: [determine-environment, build-and-test, deploy-development, deploy-production]
     if: always() && needs.build-and-test.result == 'success'
     
     steps:
@@ -465,12 +465,12 @@ jobs:
           echo "## 🌍 Environment Deployments" >> $GITHUB_STEP_SUMMARY
           
           # Development Environment
-          if [ "${{ needs.determine-environment.outputs.deploy-dev }}" == "true" ]; then
-            if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
+          if [ "${{ needs.determine-environment.outputs.deploy-development }}" == "true" ]; then
+            if [ "${{ needs.deploy-development.result }}" == "success" ]; then
               echo "✅ **Development**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
-              echo "   - Frontend: ${{ needs.deploy-dev.outputs.frontend-url }}" >> $GITHUB_STEP_SUMMARY
-              echo "   - API Gateway: ${{ needs.deploy-dev.outputs.api-gateway-url }}" >> $GITHUB_STEP_SUMMARY
-            elif [ "${{ needs.deploy-dev.result }}" == "skipped" ]; then
+              echo "   - Frontend: ${{ needs.deploy-development.outputs.frontend-url }}" >> $GITHUB_STEP_SUMMARY
+              echo "   - API Gateway: ${{ needs.deploy-development.outputs.api-gateway-url }}" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.deploy-development.result }}" == "skipped" ]; then
               echo "⏭️ **Development**: Skipped" >> $GITHUB_STEP_SUMMARY
             else
               echo "❌ **Development**: Deployment failed" >> $GITHUB_STEP_SUMMARY
@@ -480,12 +480,12 @@ jobs:
           fi
           
           # Production Environment
-          if [ "${{ needs.determine-environment.outputs.deploy-prod }}" == "true" ]; then
-            if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
+          if [ "${{ needs.determine-environment.outputs.deploy-production }}" == "true" ]; then
+            if [ "${{ needs.deploy-production.result }}" == "success" ]; then
               echo "✅ **Production**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
-              echo "   - Frontend: ${{ needs.deploy-prod.outputs.frontend-url }}" >> $GITHUB_STEP_SUMMARY
-              echo "   - API Gateway: ${{ needs.deploy-prod.outputs.api-gateway-url }}" >> $GITHUB_STEP_SUMMARY
-            elif [ "${{ needs.deploy-prod.result }}" == "skipped" ]; then
+              echo "   - Frontend: ${{ needs.deploy-production.outputs.frontend-url }}" >> $GITHUB_STEP_SUMMARY
+              echo "   - API Gateway: ${{ needs.deploy-production.outputs.api-gateway-url }}" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.deploy-production.result }}" == "skipped" ]; then
               echo "⏭️ **Production**: Skipped" >> $GITHUB_STEP_SUMMARY
             else
               echo "❌ **Production**: Deployment failed" >> $GITHUB_STEP_SUMMARY
@@ -506,10 +506,10 @@ jobs:
           
           # Next Steps
           echo "## 🎯 Next Steps" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.deploy-dev.result }}" == "success" ] && [ "${{ needs.determine-environment.outputs.deploy-prod }}" == "false" ]; then
+          if [ "${{ needs.deploy-development.result }}" == "success" ] && [ "${{ needs.determine-environment.outputs.deploy-production }}" == "false" ]; then
             echo "- ✅ Development deployment completed successfully" >> $GITHUB_STEP_SUMMARY
-            echo "- 🚀 Ready for production deployment (run workflow with 'prod' or 'both' environment)" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.deploy-prod.result }}" == "success" ]; then
+            echo "- 🚀 Ready for production deployment (run workflow with 'production' or 'both' environment)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-production.result }}" == "success" ]; then
             echo "- ✅ Production deployment completed successfully" >> $GITHUB_STEP_SUMMARY
             echo "- 🎉 All environments are up to date!" >> $GITHUB_STEP_SUMMARY
           fi
