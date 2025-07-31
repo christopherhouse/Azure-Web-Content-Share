@@ -17,6 +17,14 @@ const router = createRouter({
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AboutView.vue'),
     },
+    {
+      path: '/privacy',
+      name: 'privacy',
+      // route level code-splitting
+      // this generates a separate chunk (Privacy.[hash].js) for this route
+      // which is lazy-loaded when the route is visited.
+      component: () => import('../views/PrivacyView.vue'),
+    },
   ],
 })
 
