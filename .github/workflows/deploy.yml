@@ -25,10 +25,6 @@ on:
         required: false
         default: false
         type: boolean
-      resourceGroupName:
-        description: 'Resource Group Name (leave empty for default)'
-        required: false
-        type: string
 
 permissions:
   id-token: write
@@ -50,8 +46,6 @@ jobs:
     outputs:
       deploy-development: ${{ steps.env.outputs.deploy-development }}
       deploy-production: ${{ steps.env.outputs.deploy-production }}
-      development-resource-group: ${{ steps.env.outputs.development-resource-group }}
-      production-resource-group: ${{ steps.env.outputs.production-resource-group }}
       skip-infrastructure: ${{ steps.env.outputs.skip-infrastructure }}
       push-containers: ${{ steps.env.outputs.push-containers }}
     
@@ -74,25 +68,6 @@ jobs:
               echo "deploy-production=true" >> $GITHUB_OUTPUT
             fi
             
-            # Set resource group names
-            if [ -n "${{ github.event.inputs.resourceGroupName }}" ]; then
-              if [ "$ENVIRONMENT" == "both" ]; then
-                echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
-                echo "production-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
-              else
-                if [ "$ENVIRONMENT" == "development" ]; then
-                  echo "development-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
-                  echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
-                else
-                  echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
-                  echo "production-resource-group=${{ github.event.inputs.resourceGroupName }}" >> $GITHUB_OUTPUT
-                fi
-              fi
-            else
-              echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
-              echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
-            fi
-            
             if [ "${{ github.event.inputs.skipInfrastructure }}" == "true" ]; then
               echo "skip-infrastructure=true" >> $GITHUB_OUTPUT
             else
@@ -108,8 +83,6 @@ jobs:
             # Push to main = deploy to both environments with containers
             echo "deploy-development=true" >> $GITHUB_OUTPUT
             echo "deploy-production=true" >> $GITHUB_OUTPUT
-            echo "development-resource-group=rg-awcs-development" >> $GITHUB_OUTPUT
-            echo "production-resource-group=rg-awcs-production" >> $GITHUB_OUTPUT
             echo "skip-infrastructure=false" >> $GITHUB_OUTPUT
             echo "push-containers=true" >> $GITHUB_OUTPUT
           fi
@@ -415,7 +388,6 @@ jobs:
     uses: ./.github/workflows/deploy-environment.yml
     with:
       environment: development
-      resource-group: ${{ needs.determine-environment.outputs.development-resource-group }}
       api-image-tag: ${{ needs.build-and-test.outputs.api-image-tag }}
       api-gateway-image-tag: ${{ needs.build-and-test.outputs.api-gateway-image-tag }}
       frontend-image-tag: ${{ needs.build-and-test.outputs.frontend-image-tag }}
@@ -431,7 +403,6 @@ jobs:
     uses: ./.github/workflows/deploy-environment.yml
     with:
       environment: production
-      resource-group: ${{ needs.determine-environment.outputs.production-resource-group }}
       api-image-tag: ${{ needs.build-and-test.outputs.api-image-tag }}
       api-gateway-image-tag: ${{ needs.build-and-test.outputs.api-gateway-image-tag }}
       frontend-image-tag: ${{ needs.build-and-test.outputs.frontend-image-tag }}
