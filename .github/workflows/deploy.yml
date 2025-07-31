@@ -285,7 +285,7 @@ jobs:
           
           # Build API image in background
           docker buildx build \
-            --context . \
+            . \
             --file ./src/Api/Dockerfile \
             --push \
             --tag ${{ steps.images.outputs.api-image-tag }} \
@@ -296,7 +296,7 @@ jobs:
           
           # Build API Gateway image in background
           docker buildx build \
-            --context . \
+            . \
             --file ./src/ApiGateway/Dockerfile \
             --push \
             --tag ${{ steps.images.outputs.api-gateway-image-tag }} \
@@ -307,7 +307,7 @@ jobs:
           
           # Build Frontend image in background (without build-time secrets)
           docker buildx build \
-            --context . \
+            . \
             --file ./src/Frontend/Dockerfile \
             --push \
             --tag ${{ steps.images.outputs.frontend-image-tag }} \
@@ -318,7 +318,7 @@ jobs:
           
           # Build Jobs image in background
           docker buildx build \
-            --context . \
+            . \
             --file ./src/Jobs/Dockerfile \
             --push \
             --tag ${{ steps.images.outputs.jobs-image-tag }} \
@@ -411,7 +411,7 @@ jobs:
   deploy-development:
     name: Deploy to Development
     needs: [determine-environment, build-and-test]
-    if: needs.determine-environment.outputs.deploy-development == 'true' && needs.determine-environment.outputs.push-containers == 'true'
+    if: always() && needs.build-and-test.result == 'success' && needs.determine-environment.outputs.deploy-development == 'true' && needs.determine-environment.outputs.push-containers == 'true'
     uses: ./.github/workflows/deploy-environment.yml
     with:
       environment: development
@@ -427,7 +427,7 @@ jobs:
   deploy-production:
     name: Deploy to Production
     needs: [determine-environment, build-and-test, deploy-development]
-    if: always() && needs.determine-environment.outputs.deploy-production == 'true' && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-development.result == 'success' || needs.deploy-development.result == 'skipped')
+    if: always() && needs.build-and-test.result == 'success' && needs.determine-environment.outputs.deploy-production == 'true' && needs.determine-environment.outputs.push-containers == 'true' && (needs.deploy-development.result == 'success' || needs.deploy-development.result == 'skipped')
     uses: ./.github/workflows/deploy-environment.yml
     with:
       environment: production
