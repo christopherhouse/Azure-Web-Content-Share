@@ -1,6 +1,6 @@
 using '../main.bicep'
 
-param location = 'eastus2'
+param location = 'northcentralus'
 param appName = 'awcs'
 param environmentSuffix = 'development'
 param tags = {
