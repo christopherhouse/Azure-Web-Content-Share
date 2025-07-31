@@ -1,11 +1,15 @@
-# API Gateway Dockerfile - Use standard Caddy with custom configuration
-FROM caddy:2.8
+# API Gateway Dockerfile - Use nginx instead of Caddy
+FROM nginx:1.26-alpine
 
-# Create caddy log directory
-RUN mkdir -p /var/log/caddy
+# Create nginx log directory
+RUN mkdir -p /var/log/nginx
 
-# Copy Caddy configuration (modified to work without plugins)
-COPY src/ApiGateway/Caddyfile /etc/caddy/Caddyfile
+# Copy nginx configuration template
+COPY src/ApiGateway/nginx.conf /etc/nginx/nginx.conf.template
+
+# Copy and make executable the startup script
+COPY src/ApiGateway/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Expose port 8080 for the gateway
 EXPOSE 8080
@@ -14,5 +18,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Start Caddy with the configuration
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+# Use custom entrypoint for environment variable substitution
+ENTRYPOINT ["/docker-entrypoint.sh"]

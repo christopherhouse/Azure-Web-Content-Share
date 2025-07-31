@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # API Gateway - nginx reverse proxy
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - API_INTERNAL_URL=http://api:8080
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+  # Internal API - .NET 8 Web API
+  api:
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - app-network
+
+  # Frontend - Vue.js application served by Caddy
+  frontend:
+    build:
+      context: .
+      dockerfile: src/Frontend/Dockerfile
+      args:
+        - VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID:-your-client-id}
+        - VITE_AZURE_TENANT_ID=${VITE_AZURE_TENANT_ID:-your-tenant-id}
+    ports:
+      - "3000:8080"
+    networks:
+      - app-network
+
+  # Jobs - Background processing
+  jobs:
+    build:
+      context: .
+      dockerfile: src/Jobs/Dockerfile
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
