@@ -73,6 +73,25 @@
               </v-card>
             </v-col>
           </v-row>
+
+          <!-- Privacy and Information Links -->
+          <v-row class="mt-6">
+            <v-col cols="12" class="text-center">
+              <v-card class="pa-4" elevation="2" rounded="lg">
+                <p class="text-body-2 mb-2">
+                  Your privacy and security are our top priorities
+                </p>
+                <v-btn
+                  variant="text"
+                  color="primary"
+                  prepend-icon="mdi-shield-lock"
+                  @click="navigateTo('/privacy')"
+                >
+                  🔒 Privacy Policy
+                </v-btn>
+              </v-card>
+            </v-col>
+          </v-row>
         </template>
 
         <!-- Authenticated User Dashboard -->
