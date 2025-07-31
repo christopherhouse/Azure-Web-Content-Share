@@ -239,9 +239,15 @@ curl -X GET "https://your-api-domain.com/api/files/users/me" \
 
 #### Common Issues
 
+> 🚨 **For comprehensive troubleshooting of authentication issues, see [docs/ENTRA_ID_TROUBLESHOOTING.md](docs/ENTRA_ID_TROUBLESHOOTING.md)**
+
 **"AADSTS50011: The reply URL specified in the request does not match the reply URLs configured"**
 - Ensure redirect URIs are correctly configured in the frontend app registration
 - Check that URLs match exactly (including http/https, trailing slashes)
+
+**"AADSTS650053: Scope 'access_as_user' doesn't exist on the resource"**
+- The API app registration is missing the required `access_as_user` scope
+- Follow the detailed steps in [docs/ENTRA_ID_TROUBLESHOOTING.md](docs/ENTRA_ID_TROUBLESHOOTING.md)
 
 **"AADSTS65001: The user or administrator has not consented to use the application"**
 - Grant admin consent for the API permissions in the frontend app registration
@@ -262,6 +268,9 @@ curl -X GET "https://your-api-domain.com/api/files/users/me" \
 2. **Use browser dev tools** to inspect network requests and JWT tokens
 3. **Check JWT token contents** at [jwt.ms](https://jwt.ms) to verify claims
 4. **Review Azure AD sign-in logs** in the Azure Portal for authentication issues
+5. **Use diagnostic tools** in the frontend auth store: `useAuthStore().validateConfiguration()`
+
+> 📖 **For step-by-step troubleshooting instructions, see [docs/ENTRA_ID_TROUBLESHOOTING.md](docs/ENTRA_ID_TROUBLESHOOTING.md)**
 
 ### Security Best Practices
 

@@ -69,6 +69,19 @@ export const useAuthStore = defineStore('auth', () => {
           throw new Error('Network error during login. Please check your connection and try again.')
         } else if (error.message.includes('invalid_client')) {
           throw new Error('Authentication configuration error. Please contact support.')
+        } else if (error.message.includes('AADSTS650053')) {
+          // Handle the specific scope error from the issue
+          throw new Error(
+            'API scope configuration error. The API app registration is missing the required "access_as_user" scope. ' +
+            'Please check the Azure AD app registration configuration or contact your administrator. ' +
+            'See docs/ENTRA_ID_TROUBLESHOOTING.md for detailed instructions.'
+          )
+        } else if (error.message.includes('scope') && error.message.includes('does not exist')) {
+          throw new Error(
+            'Scope configuration error. The requested API scope is not properly configured in Azure AD. ' +
+            'Please verify the API app registration exposes the correct scopes. ' +
+            'See docs/ENTRA_ID_TROUBLESHOOTING.md for help.'
+          )
         }
       }
       
@@ -169,6 +182,40 @@ export const useAuthStore = defineStore('auth', () => {
     return accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}
   }
 
+  const getConfigurationInfo = () => {
+    return {
+      clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'not-configured',
+      tenantId: import.meta.env.VITE_AZURE_TENANT_ID || 'not-configured',
+      apiClientId: import.meta.env.VITE_API_CLIENT_ID || 'not-configured',
+      authority: msalConfig.auth.authority,
+      redirectUri: msalConfig.auth.redirectUri,
+      requestedScopes: loginRequest.scopes,
+      expectedApiScope: `api://${import.meta.env.VITE_API_CLIENT_ID || 'api-client-id'}/access_as_user`
+    }
+  }
+
+  const validateConfiguration = () => {
+    const issues = []
+    
+    if (!import.meta.env.VITE_AZURE_CLIENT_ID || import.meta.env.VITE_AZURE_CLIENT_ID === 'your-client-id') {
+      issues.push('VITE_AZURE_CLIENT_ID is not configured')
+    }
+    
+    if (!import.meta.env.VITE_AZURE_TENANT_ID || import.meta.env.VITE_AZURE_TENANT_ID === 'your-tenant-id') {
+      issues.push('VITE_AZURE_TENANT_ID is not configured')
+    }
+    
+    if (!import.meta.env.VITE_API_CLIENT_ID || import.meta.env.VITE_API_CLIENT_ID === 'api-client-id') {
+      issues.push('VITE_API_CLIENT_ID is not configured')
+    }
+    
+    return {
+      isValid: issues.length === 0,
+      issues,
+      config: getConfigurationInfo()
+    }
+  }
+
   return {
     // State
     user,
@@ -186,5 +233,9 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     acquireTokenSilent,
     getAuthHeader,
+    
+    // Diagnostic utilities
+    getConfigurationInfo,
+    validateConfiguration,
   }
 })
