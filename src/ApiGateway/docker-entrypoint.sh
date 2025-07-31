@@ -11,7 +11,7 @@ API_URL=${API_INTERNAL_URL:-$DEFAULT_API_URL}
 
 # Create the nginx configuration with proper API URL
 # Replace the placeholder in the nginx.conf template
-sed "s|http://API_PLACEHOLDER|$API_URL|g" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+sed "s|API_PLACEHOLDER|$API_URL|g" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "API Gateway starting with API URL: $API_URL"
 
