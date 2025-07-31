@@ -47,7 +47,7 @@ jobs:
         id: registry
         run: |
           # Get container registry details from dev environment
-          RG_NAME="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          RG_NAME="${{ vars.AZURE_RESOURCE_GROUP }}"
           DEPLOYMENT_NAME="infra-development-latest"
           
           # Try to get registry details from latest deployment
