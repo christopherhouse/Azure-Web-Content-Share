@@ -179,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  const getAuthHeader = () => {
+  const getAuthHeader = (): Record<string, string> => {
     return accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}
   }
 

@@ -101,11 +101,14 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
-import { RouterView } from 'vue-router'
+import { reactive, onMounted, watch } from 'vue'
+import { RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useSiteStore } from '@/stores/site'
 
 const authStore = useAuthStore()
+const siteStore = useSiteStore()
+const router = useRouter()
 
 // Global notification system
 const snackbar = reactive({
@@ -129,6 +132,9 @@ const handleLogin = async () => {
   try {
     await authStore.login()
     showNotification('Successfully signed in! 🎉', 'success')
+    
+    // Check site claim status after successful login
+    await checkSiteClaimStatus()
   } catch (error) {
     console.error('Login failed:', error)
     
@@ -153,12 +159,55 @@ const handleLogin = async () => {
 const handleLogout = async () => {
   try {
     await authStore.logout()
+    siteStore.reset() // Reset site state on logout
     showNotification('Successfully signed out! 👋', 'info')
   } catch (error) {
     console.error('Logout failed:', error)
     showNotification('Error during sign out', 'error')
   }
 }
+
+const checkSiteClaimStatus = async () => {
+  if (!authStore.isAuthenticated) {
+    return
+  }
+
+  try {
+    await siteStore.checkSiteStatus()
+    
+    // If site is not claimed and user is authenticated, redirect to claim page
+    if (siteStore.isClaimed === false && router.currentRoute.value.name !== 'admin-claim') {
+      router.push('/admin/claim')
+    }
+  } catch (error) {
+    console.error('Failed to check site claim status:', error)
+  }
+}
+
+// Watch for authentication state changes
+watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
+  if (isAuthenticated) {
+    await checkSiteClaimStatus()
+  }
+}, { immediate: false })
+
+// Initialize on mount
+onMounted(async () => {
+  // Initialize MSAL
+  await authStore.initializeMsal()
+  
+  // Check site status regardless of authentication
+  try {
+    await siteStore.checkSiteStatus()
+  } catch (error) {
+    console.error('Failed to check site status on mount:', error)
+  }
+  
+  // If user is authenticated, check if we need to redirect to claim page
+  if (authStore.isAuthenticated) {
+    await checkSiteClaimStatus()
+  }
+})
 
 // Make showNotification available globally
 // In a real app, you might want to use provide/inject or a composable
