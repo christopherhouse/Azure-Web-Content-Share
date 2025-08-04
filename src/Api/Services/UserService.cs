@@ -144,9 +144,10 @@ public class UserService : IUserService
                 return existingUser;
             }
 
-            // Create new user - first user gets Administrator role, others get ContentOwner
-            var userCount = await GetUserCountAsync();
-            var role = userCount == 0 ? UserRole.Administrator : UserRole.ContentOwner;
+            // Create new user - role depends on site claiming status
+            // All new users get ContentOwner role by default
+            // Site claiming process will explicitly promote to Administrator
+            var role = UserRole.ContentOwner;
             
             var newUser = new CurrentUser
             {
@@ -158,8 +159,8 @@ public class UserService : IUserService
                 AuthenticatedAt = DateTime.UtcNow
             };
 
-            _logger.LogInformation("Creating new user {UserId} with role {Role} (total users: {UserCount})", 
-                userId, role, userCount);
+            _logger.LogInformation("Creating new user {UserId} with role {Role}", 
+                userId, role);
 
             return await CreateOrUpdateUserAsync(newUser);
         }

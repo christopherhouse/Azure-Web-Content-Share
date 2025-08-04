@@ -53,6 +53,7 @@ builder.Services.AddSingleton(serviceProvider =>
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IFileShareService, FileShareService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ISiteService, SiteService>();
 
 // Add HTTP context accessor for authorization
 builder.Services.AddHttpContextAccessor();
@@ -223,6 +224,7 @@ app.UseAuthorization();
 // Map endpoints
 app.MapFileShareEndpoints();
 app.MapUserManagementEndpoints();
+app.MapSiteEndpoints();
 app.MapHealthEndpoints();
 
 // Map health checks (allow anonymous access)
