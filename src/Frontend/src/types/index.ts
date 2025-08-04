@@ -57,3 +57,14 @@ export interface ApiError {
   detail: string
   traceId?: string
 }
+
+export interface SiteStatusResponse {
+  isClaimed: boolean
+  siteName: string
+}
+
+export interface ClaimSiteResponse {
+  success: boolean
+  message: string
+  claimedAt: string
+}
