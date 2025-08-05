@@ -420,7 +420,10 @@ jobs:
                 APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
                 Azure__Storage__BlobEndpoint="${{ steps.config.outputs.storage-endpoint }}" \
                 Azure__CosmosDb__Endpoint="${{ steps.config.outputs.cosmos-endpoint }}" \
-                Azure__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}"
+                Azure__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}" \
+                EntraId__TenantId="${{ secrets.AZURE_TENANT_ID }}" \
+                EntraId__ClientId="${{ secrets.API_CLIENT_ID }}" \
+                EntraId__ClientSecret="${{ secrets.API_CLIENT_SECRET }}"
           else
             echo "🆕 Creating new API Container App..."
             az containerapp create \
@@ -446,7 +449,10 @@ jobs:
                 APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
                 Azure__Storage__BlobEndpoint="${{ steps.config.outputs.storage-endpoint }}" \
                 Azure__CosmosDb__Endpoint="${{ steps.config.outputs.cosmos-endpoint }}" \
-                Azure__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}"
+                Azure__KeyVault__Uri="${{ steps.config.outputs.keyvault-uri }}" \
+                EntraId__TenantId="${{ secrets.AZURE_TENANT_ID }}" \
+                EntraId__ClientId="${{ secrets.API_CLIENT_ID }}" \
+                EntraId__ClientSecret="${{ secrets.API_CLIENT_SECRET }}"
           fi
           
           echo "✅ API deployment completed"
