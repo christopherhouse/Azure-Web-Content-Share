@@ -472,6 +472,7 @@ jobs:
           # Get environment-specific Azure configuration
           AZURE_CLIENT_ID="${{ vars.FRONTEND_CLIENT_ID || secrets.FRONTEND_CLIENT_ID }}"
           AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}"
+          API_CLIENT_ID="${{ secrets.API_CLIENT_ID }}"
           
           # Check if container app already exists
           if az containerapp show --name $APP_NAME --resource-group $RG_NAME > /dev/null 2>&1; then
@@ -485,7 +486,8 @@ jobs:
                 API_GATEWAY_URL="$API_GATEWAY_URL" \
                 VITE_APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
                 VITE_AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
-                VITE_AZURE_TENANT_ID="$AZURE_TENANT_ID"
+                VITE_AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+                VITE_API_CLIENT_ID="$API_CLIENT_ID"
           else
             echo "🆕 Creating new Frontend Container App..."
             az containerapp create \
@@ -511,7 +513,8 @@ jobs:
                 API_GATEWAY_URL="$API_GATEWAY_URL" \
                 VITE_APPLICATIONINSIGHTS_CONNECTION_STRING="${{ steps.config.outputs.app-insights-conn }}" \
                 VITE_AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
-                VITE_AZURE_TENANT_ID="$AZURE_TENANT_ID"
+                VITE_AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+                VITE_API_CLIENT_ID="$API_CLIENT_ID"
           fi
           
           echo "✅ Frontend deployment completed"

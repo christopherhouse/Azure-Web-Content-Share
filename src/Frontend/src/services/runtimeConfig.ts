@@ -10,6 +10,7 @@ declare global {
       VITE_AZURE_CLIENT_ID?: string
       VITE_AZURE_TENANT_ID?: string
       VITE_API_BASE_URL?: string
+      VITE_API_CLIENT_ID?: string
       VITE_APPLICATIONINSIGHTS_CONNECTION_STRING?: string
     }
   }
@@ -56,6 +57,7 @@ export function validateConfiguration(): void {
   const required = [
     { key: 'VITE_AZURE_CLIENT_ID', value: runtimeConfig.azure.clientId },
     { key: 'VITE_AZURE_TENANT_ID', value: runtimeConfig.azure.tenantId },
+    { key: 'VITE_API_CLIENT_ID', value: runtimeConfig.api.clientId },
   ]
 
   const missing = required.filter(({ value }) => !value)
