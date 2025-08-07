@@ -38,7 +38,7 @@ public class SiteServiceTests
 
         // Setup mock cosmos database and container
         var mockDatabase = new Mock<Database>();
-        mockDatabase.Setup(x => x.GetContainer("site")).Returns(_mockContainer.Object);
+        mockDatabase.Setup(x => x.GetContainer("Site")).Returns(_mockContainer.Object);
         _mockCosmosClient.Setup(x => x.GetDatabase("test-db")).Returns(mockDatabase.Object);
 
         _siteService = new SiteService(_mockLogger.Object, _mockCosmosClient.Object, 
