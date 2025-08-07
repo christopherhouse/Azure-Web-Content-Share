@@ -25,7 +25,7 @@ export class SiteService {
    * Get site status (anonymous access)
    */
   async getSiteStatus(): Promise<SiteStatusResponse> {
-    const response = await fetch(`${this.baseUrl}/site/status`, {
+    const response = await fetch(`${this.baseUrl}/api/site/status`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -48,7 +48,7 @@ export class SiteService {
       ...authHeader,
     }
 
-    const response = await fetch(`${this.baseUrl}/site/claim`, {
+    const response = await fetch(`${this.baseUrl}/api/site/claim`, {
       method: 'POST',
       headers,
     })

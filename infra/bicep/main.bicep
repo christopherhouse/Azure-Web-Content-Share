@@ -99,8 +99,20 @@ module cosmosDb 'modules/cosmosDb/main.bicep' = {
     location: location
     cosmosDbAccountName: cosmosDbAccountName
     databaseName: 'ContentShare'
-    containerName: 'FileMetadata'
-    partitionKeyPath: '/userId'
+    containers: [
+      {
+        name: 'FileMetadata'
+        partitionKeyPath: '/userId'
+      }
+      {
+        name: 'Site'
+        partitionKeyPath: '/id'
+      }
+      {
+        name: 'JobState'
+        partitionKeyPath: '/partitionKey'
+      }
+    ]
     consistencyLevel: 'Session'
     enableAutomaticFailover: false
     enableMultipleWriteLocations: false
