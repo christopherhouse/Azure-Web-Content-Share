@@ -10,21 +10,21 @@ RUN npm ci --omit=dev
 COPY src/Frontend/ ./
 RUN npm run build
 
-# Production stage with Caddy
-FROM caddy:2.8 AS production
+# Production stage with Nginx
+FROM nginx:1.26-alpine AS production
 
 # Copy built application
-COPY --from=build /app/dist /usr/share/caddy
+COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy Caddy configuration
-COPY src/Frontend/Caddyfile /etc/caddy/Caddyfile
+# Copy Nginx configuration
+COPY src/Frontend/nginx.conf /etc/nginx/nginx.conf
 
 # Copy startup script for runtime configuration injection
 COPY src/Frontend/startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 
-# Create caddy log directory
-RUN mkdir -p /var/log/caddy
+# Create nginx log directory  
+RUN mkdir -p /var/log/nginx
 
 # Expose port 8080
 EXPOSE 8080
@@ -33,5 +33,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Use startup script instead of direct Caddy
+# Use startup script instead of direct Nginx
 CMD ["/usr/local/bin/startup.sh"]

@@ -6,10 +6,10 @@
 echo "🔧 Injecting runtime environment variables..."
 
 # Create runtime config directory
-mkdir -p /usr/share/caddy/config
+mkdir -p /usr/share/nginx/html/config
 
 # Create runtime configuration file
-cat > /usr/share/caddy/config/runtime-config.js << EOF
+cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 window.__RUNTIME_CONFIG__ = {
   VITE_AZURE_CLIENT_ID: "${VITE_AZURE_CLIENT_ID}",
   VITE_AZURE_TENANT_ID: "${VITE_AZURE_TENANT_ID}",
@@ -21,8 +21,8 @@ EOF
 
 echo "✅ Runtime configuration injected"
 echo "🔧 Runtime config contents:"
-cat /usr/share/caddy/config/runtime-config.js
+cat /usr/share/nginx/html/config/runtime-config.js
 
-# Start Caddy
-echo "🚀 Starting Caddy..."
-exec caddy run --config /etc/caddy/Caddyfile
+# Start Nginx
+echo "🚀 Starting Nginx..."
+exec nginx -g "daemon off;"
