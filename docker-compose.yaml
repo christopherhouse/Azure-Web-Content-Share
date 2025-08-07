@@ -28,7 +28,7 @@ services:
     networks:
       - app-network
 
-  # Frontend - Vue.js application served by Caddy
+  # Frontend - Vue.js application served by Nginx
   frontend:
     build:
       context: .
