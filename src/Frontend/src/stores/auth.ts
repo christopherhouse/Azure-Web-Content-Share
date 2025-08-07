@@ -55,6 +55,11 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('MSAL not initialized')
     }
 
+    // Debug logging for authentication troubleshooting
+    console.log('🔍 Auth Debug - API Client ID:', runtimeConfig.api.clientId || 'not-configured')
+    console.log('🔍 Auth Debug - Requested Scopes:', loginRequest.scopes)
+    console.log('🔍 Auth Debug - Full Login Request:', loginRequest)
+
     isLoading.value = true
     try {
       const response = await msalInstance.value.loginPopup(loginRequest)
