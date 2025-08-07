@@ -7,11 +7,8 @@ param cosmosDbAccountName string
 @description('The database name')
 param databaseName string = 'ContentShare'
 
-@description('The container name for file metadata')
-param containerName string = 'FileMetadata'
-
-@description('The partition key path for the container')
-param partitionKeyPath string = '/userId'
+@description('Array of containers to create')
+param containers array = []
 
 @description('The consistency level of the Cosmos DB account')
 @allowed([
@@ -87,15 +84,15 @@ resource cosmosDbDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@20
   }
 }
 
-resource cosmosDbContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  name: containerName
+resource cosmosDbContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = [for container in containers: {
+  name: container.name
   parent: cosmosDbDatabase
   properties: {
     resource: {
-      id: containerName
+      id: container.name
       partitionKey: {
         paths: [
-          partitionKeyPath
+          container.partitionKeyPath
         ]
         kind: 'Hash'
       }
@@ -118,7 +115,7 @@ resource cosmosDbContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
       throughput: 400
     }
   }
-}
+}]
 
 resource cosmosDbDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${cosmosDbAccountName}-diagnostics'
@@ -160,5 +157,11 @@ output cosmosDbEndpoint string = cosmosDbAccount.properties.documentEndpoint
 @description('The name of the database')
 output databaseName string = cosmosDbDatabase.name
 
-@description('The name of the container')
-output containerName string = cosmosDbContainer.name
+@description('Array of container names created')
+output containerNames array = [for i in range(0, length(containers)): cosmosDbContainer[i].name]
+
+@description('Array of containers with their details')
+output containers array = [for i in range(0, length(containers)): {
+  name: cosmosDbContainer[i].name
+  partitionKeyPath: containers[i].partitionKeyPath
+}]

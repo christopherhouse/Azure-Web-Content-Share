@@ -38,33 +38,18 @@ public class CleanupJobStateService : ICleanupJobStateService
 
         try
         {
-            // Get or create the database
-            var database = await _cosmosClient.CreateDatabaseIfNotExistsAsync(
-                _azureOptions.CosmosDb.DatabaseName);
+            // Get the database (should already exist from infrastructure deployment)
+            var database = _cosmosClient.GetDatabase(_azureOptions.CosmosDb.DatabaseName);
 
-            // Create container specifically for job state with system partition key
-            var containerProperties = new ContainerProperties
-            {
-                Id = "JobState",
-                PartitionKeyPath = "/partitionKey"
-            };
-
-            // Configure for efficient point reads with low RU consumption
-            containerProperties.IndexingPolicy.IncludedPaths.Clear();
-            containerProperties.IndexingPolicy.IncludedPaths.Add(new IncludedPath { Path = "/id/?" });
-            containerProperties.IndexingPolicy.IncludedPaths.Add(new IncludedPath { Path = "/partitionKey/?" });
-            containerProperties.IndexingPolicy.ExcludedPaths.Add(new ExcludedPath { Path = "/*" });
-
-            var containerResponse = await database.Database.CreateContainerIfNotExistsAsync(
-                containerProperties,
-                throughputProperties: null); // Use serverless
-
-            _container = containerResponse.Container;
+            // Get the JobState container (should already exist from infrastructure deployment)
+            _container = database.GetContainer("JobState");
+            
             return _container;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize Cosmos DB container for job state");
+            _logger.LogError(ex, "Failed to get Cosmos DB container for job state. Ensure the JobState container exists in database {DatabaseName}", 
+                _azureOptions.CosmosDb.DatabaseName);
             throw;
         }
     }
