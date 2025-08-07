@@ -31,7 +31,7 @@ public class SiteService : ISiteService
         _userService = userService;
         
         var database = _cosmosClient.GetDatabase(_azureOptions.CosmosDb.DatabaseName);
-        _siteContainer = database.GetContainer("Site");
+        _siteContainer = database.GetContainer("site");
     }
 
     /// <inheritdoc/>
